@@ -13,15 +13,18 @@ if not API_TOKEN:
 
 # Инициализация бота
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher()  # Диспетчер является корневым роутером
+dp = Dispatcher()
 
 # Команда /start
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
     # Создание клавиатуры с кнопкой
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    test_button = KeyboardButton("Тест")  # Кнопка "Тест"
-    keyboard.add(test_button)
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Тест")]  # Добавление кнопки "Тест"
+        ],
+        resize_keyboard=True  # Изменение размера клавиатуры
+    )
 
     # Отправляем приветственное сообщение с клавиатурой
     await message.answer("Привет! Нажми на кнопку 'Тест'.", reply_markup=keyboard)
