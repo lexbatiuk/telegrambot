@@ -1,15 +1,14 @@
 import logging
 import asyncio
 from aiogram import Bot, Dispatcher
-from handlers import register_handlers, clean_inactive_users
+from handlers import register_handlers
 from scheduler import setup_scheduler
 from database import init_db
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import os
 
 # Настройка логирования
 logging.basicConfig(
-    level=logging.INFO,  # Уровень логирования: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
@@ -25,32 +24,20 @@ if not API_TOKEN:
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# Функция настройки очистки данных неактивных пользователей
-def setup_cleanup_task(bot):
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(clean_inactive_users, "interval", hours=24, args=[bot])  # Раз в сутки
-    scheduler.start()
-    logger.info("Планировщик очистки данных запущен.")
-
 async def main():
     logger.info("Запуск бота...")
-    
     # Инициализация базы данных
     init_db()
     logger.info("База данных инициализирована.")
-    
+
     # Регистрация обработчиков
     register_handlers(dp)
     logger.info("Обработчики зарегистрированы.")
-    
+
     # Запуск планировщика
     setup_scheduler(bot)
-    logger.info("Планировщик для задач запущен.")
-    
-    # Настройка очистки неактивных пользователей
-    setup_cleanup_task(bot)
-    logger.info("Планировщик очистки данных настроен.")
-    
+    logger.info("Планировщик запущен.")
+
     # Запуск бота
     await dp.start_polling(bot)
 
