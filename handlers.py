@@ -1,10 +1,39 @@
-import logging
 from aiogram import Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
-from database import add_channel, get_user_channels
+from database import add_channel, get_user_channels, delete_user_data
+from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
+import logging
 
 logger = logging.getLogger(__name__)
+
+async def is_user_active(bot, user_id):
+    """
+    Проверяет, активен ли пользователь, отправляя ему тестовое сообщение.
+    """
+    try:
+        await bot.send_message(user_id, "Проверяем вашу активность...")
+        return True
+    except (TelegramForbiddenError, TelegramBadRequest):
+        logger.warning(f"Пользователь {user_id} не активен. Удаляем данные.")
+        return False
+
+async def clean_inactive_users(bot):
+    """
+    Проверяет пользователей на активность и удаляет данные неактивных пользователей.
+    """
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT DISTINCT user_id FROM user_channels")
+        users = cursor.fetchall()
+
+        for user_id, in users:
+            if not await is_user_active(bot, user_id):
+                delete_user_data(user_id)
+                logger.info(f"Пользователь {user_id} больше не активен. Данные удалены.")
+    finally:
+        conn.close()
 
 def register_handlers(dp: Dispatcher):
     @dp.message(Command("start"))
