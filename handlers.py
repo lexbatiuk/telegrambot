@@ -1,39 +1,38 @@
 from aiogram import Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
-from database import add_channel, get_user_channels, delete_user_data
-from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
+from database import add_channel, get_user_channels
+from telethon import TelegramClient
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
-async def is_user_active(bot, user_id):
+# Подключение к Telegram API через переменные окружения
+API_ID = os.getenv("api_id")
+API_HASH = os.getenv("api_hash")
+client = TelegramClient('bot_session', API_ID, API_HASH)
+
+async def fetch_messages_from_channels(user_channels):
     """
-    Проверяет, активен ли пользователь, отправляя ему тестовое сообщение.
+    Получает последние сообщения из всех каналов пользователя.
     """
     try:
-        await bot.send_message(user_id, "Проверяем вашу активность...")
-        return True
-    except (TelegramForbiddenError, TelegramBadRequest):
-        logger.warning(f"Пользователь {user_id} не активен. Удаляем данные.")
-        return False
-
-async def clean_inactive_users(bot):
-    """
-    Проверяет пользователей на активность и удаляет данные неактивных пользователей.
-    """
-    conn = sqlite3.connect("bot_database.db")
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT DISTINCT user_id FROM user_channels")
-        users = cursor.fetchall()
-
-        for user_id, in users:
-            if not await is_user_active(bot, user_id):
-                delete_user_data(user_id)
-                logger.info(f"Пользователь {user_id} больше не активен. Данные удалены.")
+        await client.start()
+        all_messages = []
+        for channel in user_channels:
+            messages = []
+            async for message in client.iter_messages(channel, limit=5):  # 5 последних сообщений
+                if message.text:
+                    messages.append(f"📨 {message.text}")
+            if messages:
+                all_messages.append(f"Канал: {channel}\n" + "\n\n".join(messages))
+        return all_messages
+    except Exception as e:
+        logger.error(f"Ошибка при получении сообщений из каналов: {e}")
+        return ["Не удалось получить сообщения."]
     finally:
-        conn.close()
+        await client.disconnect()
 
 def register_handlers(dp: Dispatcher):
     @dp.message(Command("start"))
@@ -41,7 +40,8 @@ def register_handlers(dp: Dispatcher):
         logger.info(f"Пользователь {message.from_user.id} отправил /start.")
         keyboard = ReplyKeyboardMarkup(
             keyboard=[
-                [KeyboardButton(text="Добавить канал"), KeyboardButton(text="Мои каналы")]
+                [KeyboardButton(text="Добавить канал"), KeyboardButton(text="Мои каналы")],
+                [KeyboardButton(text="Получить дайджест")],
             ],
             resize_keyboard=True
         )
@@ -74,3 +74,21 @@ def register_handlers(dp: Dispatcher):
         else:
             logger.info(f"У пользователя {user_id} нет добавленных каналов.")
             await message.answer("У вас пока нет добавленных каналов.")
+
+    @dp.message(lambda message: message.text == "Получить дайджест")
+    async def get_digest(message: types.Message):
+        logger.info(f"Пользователь {message.from_user.id} запросил дайджест.")
+        user_id = message.from_user.id
+        channels = get_user_channels(user_id)
+
+        if not channels:
+            logger.info(f"У пользователя {user_id} нет каналов для получения дайджеста.")
+            await message.answer("У вас пока нет добавленных каналов. Добавьте их через меню.")
+            return
+
+        messages = await fetch_messages_from_channels(channels)
+        if messages:
+            for msg in messages:
+                await message.answer(msg)
+        else:
+            await message.answer("Не удалось получить сообщения из ваших каналов.")
