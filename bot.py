@@ -8,9 +8,9 @@ from telethon import TelegramClient
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # Получение данных из переменных окружения
-API_TOKEN = os.getenv('BOT_TOKEN')  # Токен бота из переменной окружения
-API_ID = os.getenv('API_ID')  # Telegram API ID
-API_HASH = os.getenv('API_HASH')  # Telegram API Hash
+API_TOKEN = os.getenv('bot_token')  # Токен бота
+API_ID = os.getenv('api_id')  # ID из Telegram
+API_HASH = os.getenv('api_hash')  # Hash из Telegram
 
 if not API_TOKEN or not API_ID or not API_HASH:
     raise ValueError("Необходимые переменные окружения не заданы.")
