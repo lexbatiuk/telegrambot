@@ -1,37 +1,54 @@
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram import Dispatcher, types
 from aiogram.filters import Command
-from database import add_user_channel, get_user_channels
-from scheduler import schedule_daily_summary
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+import hashlib
 
-def setup_handlers(dp):
-    @dp.message(Command("start"))
-    async def send_welcome(message: Message):
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="Добавить канал", callback_data="add_channel")],
-                [InlineKeyboardButton(text="Получить саммари", callback_data="get_summary")]
-            ]
-        )
-        await message.answer("Привет! Что будем делать?", reply_markup=keyboard)
+# Локальные данные
+user_channels = {}
+processed_texts = {}
 
-    @dp.callback_query(lambda c: c.data == "add_channel")
-    async def add_channel(callback: CallbackQuery):
-        await callback.message.answer("Введите название канала (@example).")
-        await callback.answer()
+# Хеширование текста
+def get_text_hash(text: str):
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
 
-    @dp.message(lambda msg: msg.text.startswith('@'))
-    async def handle_channel_input(message: Message):
-        if add_user_channel(message.from_user.id, message.text):
-            await message.answer(f"Канал {message.text} добавлен!")
-        else:
-            await message.answer("Этот канал уже добавлен.")
+# Постоянная клавиатура
+keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+keyboard.add(
+    KeyboardButton("Добавить канал"),
+    KeyboardButton("Получить саммари"),
+    KeyboardButton("Список каналов")
+)
 
-    @dp.callback_query(lambda c: c.data == "get_summary")
-    async def get_summary(callback: CallbackQuery):
-        channels = get_user_channels(callback.from_user.id)
-        if channels:
-            schedule_daily_summary(callback.from_user.id, channels)
-            await callback.message.answer("Саммари запланировано!")
-        else:
-            await callback.message.answer("Сначала добавьте каналы.")
-        await callback.answer()
+# Команда /start
+async def send_welcome(message: types.Message):
+    await message.answer("Привет! Вот что я могу сделать:", reply_markup=keyboard)
+
+# Обработка кнопки "Добавить канал"
+async def select_channel(message: types.Message):
+    await message.answer("Введите название канала или ссылку на канал (например, @news_channel).")
+    user_channels[message.from_user.id] = []
+
+# Обработка добавления канала
+async def add_channel(message: types.Message):
+    user_id = message.from_user.id
+    channel = message.text.strip()
+
+    if channel not in user_channels.get(user_id, []):
+        user_channels[user_id].append(channel)
+        await message.answer(f"Канал {channel} добавлен в список для мониторинга!")
+    else:
+        await message.answer(f"Канал {channel} уже добавлен.")
+
+# Обработка кнопки "Список каналов"
+async def list_channels(message: types.Message):
+    user_id = message.from_user.id
+    channels = user_channels.get(user_id, [])
+    if channels:
+        await message.answer("Ваши каналы:\n" + "\n".join(channels))
+    else:
+        await message.answer("У вас пока нет добавленных каналов.")
+
+# Обработка кнопки "Получить саммари"
+async def get_summary(message: types.Message, client):
+    user_id = message.from_user.id
+    if user_id in user_channels
