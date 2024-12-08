@@ -7,8 +7,13 @@ def register_handlers(dp: Dispatcher):
     # Обработчик команды /start
     @dp.message(Command("start"))
     async def send_welcome(message: types.Message):
-        keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-        keyboard.add(KeyboardButton("Добавить канал"), KeyboardButton("Мои каналы"))
+        # Создаем кнопки
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="Добавить канал"), KeyboardButton(text="Мои каналы")]
+            ],
+            resize_keyboard=True
+        )
         await message.answer("Привет! Используй меню для управления ботом.", reply_markup=keyboard)
 
     # Обработчик нажатия кнопки "Добавить канал"
