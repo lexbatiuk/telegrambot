@@ -1,7 +1,10 @@
 import sqlite3
 
+DB_FILE = "bot.db"
+
 def init_db():
-    conn = sqlite3.connect("bot.db")
+    """Инициализация базы данных."""
+    conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_channels (
@@ -13,9 +16,10 @@ def init_db():
     conn.commit()
     conn.close()
 
-def add_user_channel(user_id, channel):
+def add_channel(user_id: int, channel: str) -> bool:
+    """Добавляет канал для пользователя. Возвращает True, если добавление успешно."""
     try:
-        conn = sqlite3.connect("bot.db")
+        conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute("INSERT INTO user_channels (user_id, channel) VALUES (?, ?)", (user_id, channel))
         conn.commit()
@@ -25,10 +29,8 @@ def add_user_channel(user_id, channel):
     finally:
         conn.close()
 
-def get_user_channels(user_id):
-    conn = sqlite3.connect("bot.db")
+def get_user_channels(user_id: int) -> list[str]:
+    """Возвращает список каналов пользователя."""
+    conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT channel FROM user_channels WHERE user_id = ?", (user_id,))
-    channels = [row[0] for row in cursor.fetchall()]
-    conn.close()
-    return channels
+    cursor.execute("SELECT channel FROM user_channels WHERE user_id
