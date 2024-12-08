@@ -1,19 +1,19 @@
 import asyncio
 from aiogram import Bot, Dispatcher
 from handlers import register_handlers
+import os
 
 # Получение данных из переменных окружения
-import os
 API_TOKEN = os.getenv('bot_token')
 
 if not API_TOKEN:
-    raise ValueError("Необходимые переменные окружения не заданы.")
+    raise ValueError("Токен бота не задан. Проверь переменные окружения!")
 
 # Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# Словарь для хранения каналов пользователей
+# Хранилище данных о каналах пользователей
 user_channels = {}
 
 # Регистрация обработчиков
