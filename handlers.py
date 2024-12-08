@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 # Подключение к Telegram API через переменные окружения
 API_ID = os.getenv("api_id")
 API_HASH = os.getenv("api_hash")
+BOT_TOKEN = os.getenv("bot_token")
 client = TelegramClient('bot_session', API_ID, API_HASH)
 
 async def fetch_messages_from_channels(user_channels):
@@ -18,7 +19,8 @@ async def fetch_messages_from_channels(user_channels):
     Получает последние сообщения из всех каналов пользователя.
     """
     try:
-        await client.start()
+        # Инициализация Telethon как бота
+        await client.start(bot_token=BOT_TOKEN)
         all_messages = []
         for channel in user_channels:
             messages = []
