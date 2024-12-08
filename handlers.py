@@ -19,19 +19,22 @@ async def fetch_messages_from_channels(user_channels):
     Получает последние сообщения из всех каналов пользователя.
     """
     try:
-        # Инициализация Telethon как бота
         await client.start(bot_token=BOT_TOKEN)
         all_messages = []
         for channel in user_channels:
-            messages = []
-            async for message in client.iter_messages(channel, limit=5):  # 5 последних сообщений
-                if message.text:
-                    messages.append(f"📨 {message.text}")
-            if messages:
-                all_messages.append(f"Канал: {channel}\n" + "\n\n".join(messages))
+            try:
+                messages = []
+                async for message in client.iter_messages(channel, limit=5):  # 5 последних сообщений
+                    if message.text:
+                        messages.append(f"📨 {message.text}")
+                if messages:
+                    all_messages.append(f"Канал: {channel}\n" + "\n\n".join(messages))
+            except Exception as e:
+                logger.error(f"Ошибка при обработке канала {channel}: {e}")
+                all_messages.append(f"Не удалось получить сообщения из канала {channel}.")
         return all_messages
     except Exception as e:
-        logger.error(f"Ошибка при получении сообщений из каналов: {e}")
+        logger.error(f"Общая ошибка при получении сообщений: {e}")
         return ["Не удалось получить сообщения."]
     finally:
         await client.disconnect()
@@ -43,7 +46,7 @@ def register_handlers(dp: Dispatcher):
         keyboard = ReplyKeyboardMarkup(
             keyboard=[
                 [KeyboardButton(text="Добавить канал"), KeyboardButton(text="Мои каналы")],
-                [KeyboardButton(text="Получить дайджест")],
+                [KeyboardButton(text="Получить дайджест")]
             ],
             resize_keyboard=True
         )
@@ -58,12 +61,20 @@ def register_handlers(dp: Dispatcher):
     async def add_channel_handler(message: types.Message):
         user_id = message.from_user.id
         channel = message.text.strip()
-        if add_channel(user_id, channel):
-            logger.info(f"Канал {channel} добавлен для пользователя {user_id}.")
-            await message.answer(f"Канал {channel} успешно добавлен!")
-        else:
-            logger.warning(f"Канал {channel} уже добавлен для пользователя {user_id}.")
-            await message.answer(f"Канал {channel} уже добавлен.")
+        try:
+            await client.start(bot_token=BOT_TOKEN)
+            await client.get_entity(channel)
+            if add_channel(user_id, channel):
+                logger.info(f"Канал {channel} добавлен для пользователя {user_id}.")
+                await message.answer(f"Канал {channel} успешно добавлен!")
+            else:
+                logger.warning(f"Канал {channel} уже добавлен для пользователя {user_id}.")
+                await message.answer(f"Канал {channel} уже добавлен.")
+        except Exception as e:
+            logger.error(f"Ошибка при добавлении канала {channel}: {e}")
+            await message.answer(f"Не удалось добавить канал {channel}. Проверьте правильность имени.")
+        finally:
+            await client.disconnect()
 
     @dp.message(lambda message: message.text == "Мои каналы")
     async def show_channels(message: types.Message):
