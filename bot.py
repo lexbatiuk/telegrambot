@@ -3,7 +3,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils import executor
 import os
 
-# Получаем токен из переменных окружения
+# Получение токена бота из переменных окружения
 API_TOKEN = os.getenv('bot_token')
 
 # Инициализация бота и диспетчера
@@ -13,18 +13,18 @@ dp = Dispatcher(bot)
 # Команда /start
 @dp.message_handler(commands=['start'])
 async def send_welcome(message: types.Message):
-    # Создаем клавиатуру с кнопкой
+    # Создание клавиатуры с кнопкой
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    test_button = KeyboardButton("Тест")  # Название кнопки
+    test_button = KeyboardButton("Тест")  # Кнопка с названием "Тест"
     keyboard.add(test_button)
     
-    # Отправляем приветственное сообщение с клавиатурой
+    # Отправляем сообщение с клавиатурой
     await message.answer("Привет! Нажми на кнопку 'Тест'.", reply_markup=keyboard)
 
 # Обработка нажатия кнопки "Тест"
 @dp.message_handler(lambda message: message.text == "Тест")
 async def test_button_response(message: types.Message):
-    await message.answer("🙂")  # Отправляем смайлик
+    await message.answer("🙂")  # Отправляем смайлик в ответ на кнопку
 
 # Запуск бота
 if __name__ == '__main__':
