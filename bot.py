@@ -1,37 +1,52 @@
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 import asyncio
 import os
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 # Получение токена из переменных окружения
 API_TOKEN = os.getenv('bot_token')
 
-# Инициализация бота
+# Проверка наличия токена
+if not API_TOKEN:
+    raise ValueError("Токен бота не найден. Убедитесь, что переменная окружения 'bot_token' задана.")
+
+# Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 # Команда /start
-@dp.message(commands=["start"])
+@dp.message(Command("start"))
 async def send_welcome(message: types.Message):
     # Создание клавиатуры с кнопкой
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    test_button = KeyboardButton("Тест")  # Кнопка с текстом "Тест"
+    test_button = KeyboardButton("Тест")  # Кнопка "Тест"
     keyboard.add(test_button)
 
     # Отправляем приветственное сообщение с клавиатурой
     await message.answer("Привет! Нажми на кнопку 'Тест'.", reply_markup=keyboard)
 
-# Обработка кнопки "Тест"
+# Обработка нажатия кнопки "Тест"
 @dp.message(lambda message: message.text == "Тест")
 async def test_button_response(message: types.Message):
     await message.answer("🙂")  # Ответ смайликом
 
-# Главная асинхронная функция
+# Главная асинхронная функция запуска бота
 async def main():
-    # Настройка диспетчера
-    dp.include_router(dp)
-    await bot.delete_webhook(drop_pending_updates=True)  # Удаляем вебхук, если был
-    await dp.start_polling(bot)  # Запуск опроса
+    try:
+        # Настройка диспетчера
+        dp.include_router(dp)
+
+        # Удаляем старые вебхуки, если они были
+        await bot.delete_webhook(drop_pending_updates=True)
+
+        print("Бот запущен!")
+        # Запускаем поллинг
+        await dp.start_polling(bot)
+    except Exception as e:
+        print(f"Произошла ошибка: {e}")
+    finally:
+        await bot.session.close()  # Закрытие сессии бота при завершении
 
 # Запуск бота
 if __name__ == "__main__":
