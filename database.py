@@ -1,5 +1,5 @@
-import logging
 import sqlite3
+import logging
 
 logger = logging.getLogger(__name__)
 DB_FILE = "bot_database.db"
@@ -41,5 +41,18 @@ def get_user_channels(user_id):
         channels = [row[0] for row in cursor.fetchall()]
         logger.info(f"Получен список каналов для пользователя {user_id}: {channels}")
         return channels
+    finally:
+        conn.close()
+
+def delete_user_data(user_id):
+    """
+    Удаляет все данные пользователя из базы данных.
+    """
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM user_channels WHERE user_id = ?", (user_id,))
+        conn.commit()
+        logger.info(f"Данные пользователя {user_id} удалены.")
     finally:
         conn.close()
