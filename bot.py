@@ -11,9 +11,9 @@ API_TOKEN = os.getenv('bot_token')
 if not API_TOKEN:
     raise ValueError("Токен бота не найден. Убедитесь, что переменная окружения 'bot_token' задана.")
 
-# Инициализация бота и диспетчера
+# Инициализация бота
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher()  # Диспетчер является корневым роутером
 
 # Команда /start
 @dp.message(Command("start"))
@@ -34,9 +34,6 @@ async def test_button_response(message: types.Message):
 # Главная асинхронная функция запуска бота
 async def main():
     try:
-        # Настройка диспетчера
-        dp.include_router(dp)
-
         # Удаляем старые вебхуки, если они были
         await bot.delete_webhook(drop_pending_updates=True)
 
