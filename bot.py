@@ -5,10 +5,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from telethon import TelegramClient
-from dotenv import load_dotenv
-
-# Загружаем переменные окружения
-load_dotenv()
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # Получение данных из переменных окружения
 API_TOKEN = os.getenv('BOT_TOKEN')  # Токен бота из переменной окружения
@@ -54,35 +51,43 @@ async def select_channel(message: types.Message):
 async def add_channel(message: types.Message):
     user_id = message.from_user.id
     channel = message.text.strip()
-    
-    # Сохраняем канал для пользователя
-    if user_id not in user_channels:
-        user_channels[user_id] = []
-    
-    user_channels[user_id].append(channel)
-    
-    await message.answer(f"Канал {channel} добавлен в список для мониторинга!")
+
+    # Проверка, что канал уже не добавлен
+    if channel not in user_channels.get(user_id, []):
+        user_channels[user_id].append(channel)
+        await message.answer(f"Канал {channel} добавлен в список для мониторинга!")
+    else:
+        await message.answer(f"Канал {channel} уже добавлен.")
 
 # Сбор сообщений с каналов
 async def fetch_messages(user_id):
     if user_id in user_channels:
         for channel in user_channels[user_id]:
-            async for message in client.iter_messages(channel, limit=5):  # Ограничиваем 5 последними сообщениями
-                text = message.text
-                if text:
-                    # Хешируем текст и проверяем, был ли он уже обработан
-                    message_hash = get_text_hash(text)
-                    if message_hash not in processed_texts:
-                        processed_texts[message_hash] = text
-                        summary = text[:200]  # Возьмем первые 200 символов как пример саммари
-                        await bot.send_message(user_id, f"Саммари для {channel}: {summary}")
-                    else:
-                        await bot.send_message(user_id, f"Сообщение из {channel} уже было обработано.")
+            try:
+                async for message in client.iter_messages(channel, limit=5):  # Ограничиваем 5 последними сообщениями
+                    text = message.text
+                    if text:
+                        # Хешируем текст и проверяем, был ли он уже обработан
+                        message_hash = get_text_hash(text)
+                        if message_hash not in processed_texts:
+                            processed_texts[message_hash] = text
+                            summary = text[:200]  # Возьмем первые 200 символов как пример саммари
+                            await bot.send_message(user_id, f"Саммари для {channel}: {summary}")
+                        else:
+                            await bot.send_message(user_id, f"Сообщение из {channel} уже было обработано.")
+            except Exception as e:
+                await bot.send_message(user_id, f"Ошибка при обработке канала {channel}: {e}")
 
 # Команда для получения саммари
 @dp.message(Command("get_summary"))
 async def get_summary(message: types.Message):
     await fetch_messages(message.from_user.id)
+
+# Планировщик задач для автоматического сбора новостей
+async def scheduled_task():
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(fetch_messages, 'interval', hours=24, args=[message.from_user.id])  # Запускать раз в 24 часа
+    scheduler.start()
 
 # Главная асинхронная функция
 async def main():
