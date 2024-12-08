@@ -1,18 +1,22 @@
 import os
-import asyncio
 import hashlib
+import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from telethon import TelegramClient
+from dotenv import load_dotenv
 
-# Получение токена из переменных окружения
-API_TOKEN = os.getenv('bot_token')
-API_ID = os.getenv('api_id')
-API_HASH = os.getenv('api_hash')
+# Загружаем переменные окружения
+load_dotenv()
+
+# Получение данных из переменных окружения
+API_TOKEN = os.getenv('BOT_TOKEN')  # Токен бота из переменной окружения
+API_ID = os.getenv('API_ID')  # Telegram API ID
+API_HASH = os.getenv('API_HASH')  # Telegram API Hash
 
 if not API_TOKEN or not API_ID or not API_HASH:
-    raise ValueError("Токен бота, api_id или api_hash не заданы.")
+    raise ValueError("Необходимые переменные окружения не заданы.")
 
 # Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
@@ -23,6 +27,9 @@ client = TelegramClient('bot_session', API_ID, API_HASH)
 
 # Словарь для хранения каналов пользователя
 user_channels = {}
+
+# Словарь для хранения хешей обработанных сообщений
+processed_texts = {}
 
 # Хеширование текста для избежания повторной обработки
 def get_text_hash(text: str):
