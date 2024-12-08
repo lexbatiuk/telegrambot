@@ -2,3 +2,4 @@ aiogram>=3.0.0b7
 telethon
 python-dotenv
 apscheduler==3.9.1
+sqlite3
