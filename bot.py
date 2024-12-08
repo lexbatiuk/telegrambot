@@ -3,9 +3,9 @@ import asyncio
 
 # Environment Variables for Render
 import os
-api_id = int(os.getenv('api_id'))  # Telegram API ID
-api_hash = os.getenv('api_hash')  # Telegram API Hash
-bot_token = os.getenv('bot_token')  # Bot Token from BotFather
+api_id = int(os.getenv('25028817'))  # Telegram API ID
+api_hash = os.getenv('5a53c8a24269d4d6bed55de5a431811c')  # Telegram API Hash
+bot_token = os.getenv('7708475257:AAHaMc2mE24P9mHvOKl59bHYaAMr9q2eGYQ')  # Bot Token from BotFather
 
 # Initialize Telegram Client
 client = TelegramClient('bot', api_id, api_hash).start(bot_token=bot_token)
