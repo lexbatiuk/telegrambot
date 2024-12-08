@@ -39,10 +39,13 @@ def get_text_hash(text: str):
 # Команда /start
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
-    keyboard = InlineKeyboardMarkup()
-    start_button = InlineKeyboardButton("Выбрать канал", callback_data="select_channel")
-    get_summary_button = InlineKeyboardButton("Получить саммари", callback_data="get_summary")
-    keyboard.add(start_button, get_summary_button)
+    # Создаем клавиатуру с кнопками
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton("Выбрать канал", callback_data="select_channel")],
+            [InlineKeyboardButton("Получить саммари", callback_data="get_summary")]
+        ]
+    )
     await message.answer("Привет! Выберите действие:", reply_markup=keyboard)
 
 # Обработка кнопки "Выбрать канал"
