@@ -1,8 +1,11 @@
+import logging
 import sqlite3
 
-# Инициализация базы данных
+logger = logging.getLogger(__name__)
+DB_FILE = "bot_database.db"
+
 def init_db():
-    conn = sqlite3.connect("bot_database.db")
+    conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_channels (
@@ -12,28 +15,31 @@ def init_db():
     """)
     conn.commit()
     conn.close()
+    logger.info("Таблица user_channels проверена или создана.")
 
-# Добавление канала для пользователя
 def add_channel(user_id, channel):
-    conn = sqlite3.connect("bot_database.db")
+    conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT channel FROM user_channels WHERE user_id = ? AND channel = ?", (user_id, channel))
-    if cursor.fetchone() is None:
-        cursor.execute("INSERT INTO user_channels (user_id, channel) VALUES (?, ?)", (user_id, channel))
-        conn.commit()
+    try:
+        cursor.execute("SELECT channel FROM user_channels WHERE user_id = ? AND channel = ?", (user_id, channel))
+        if cursor.fetchone() is None:
+            cursor.execute("INSERT INTO user_channels (user_id, channel) VALUES (?, ?)", (user_id, channel))
+            conn.commit()
+            logger.info(f"Канал {channel} добавлен для пользователя {user_id}.")
+            return True
+        else:
+            logger.warning(f"Канал {channel} уже существует для пользователя {user_id}.")
+            return False
+    finally:
         conn.close()
-        return True
-    conn.close()
-    return False
 
-# Получение списка каналов пользователя
 def get_user_channels(user_id):
-    conn = sqlite3.connect("bot_database.db")
+    conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT channel FROM user_channels WHERE user_id = ?", (user_id,))
-    channels = [row[0] for row in cursor.fetchall()]
-    conn.close()
-    return channels
-
-# Инициализация базы данных при запуске
-init_db()
+    try:
+        cursor.execute("SELECT channel FROM user_channels WHERE user_id = ?", (user_id,))
+        channels = [row[0] for row in cursor.fetchall()]
+        logger.info(f"Получен список каналов для пользователя {user_id}: {channels}")
+        return channels
+    finally:
+        conn.close()
