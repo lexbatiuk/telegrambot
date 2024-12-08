@@ -1,21 +1,32 @@
-from telethon import TelegramClient
-import asyncio
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.utils import executor
 import os
 
-# Environment Variables for Railway or Render
-api_id = int(os.getenv('api_id'))  # Telegram API ID
-api_hash = os.getenv('api_hash')  # Telegram API Hash
-bot_token = os.getenv('bot_token')  # Bot Token from BotFather
+# Получаем токен из переменных окружения
+API_TOKEN = os.getenv('bot_token')
 
-# Initialize Telegram Client
-client = TelegramClient('bot', api_id, api_hash).start(bot_token=bot_token)
+# Инициализация бота и диспетчера
+bot = Bot(token=API_TOKEN)
+dp = Dispatcher(bot)
 
-async def main():
-    # Test the bot by sending a message to yourself
-    me = await client.get_me()
-    await client.send_message(me.id, "Hello from your bot running!")
-    print("Message sent to yourself!")
+# Команда /start
+@dp.message_handler(commands=['start'])
+async def send_welcome(message: types.Message):
+    # Создаем клавиатуру с кнопкой
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    test_button = KeyboardButton("Тест")  # Название кнопки
+    keyboard.add(test_button)
+    
+    # Отправляем приветственное сообщение с клавиатурой
+    await message.answer("Привет! Нажми на кнопку 'Тест'.", reply_markup=keyboard)
 
-# Run the bot
-with client:
-    client.loop.run_until_complete(main())
+# Обработка нажатия кнопки "Тест"
+@dp.message_handler(lambda message: message.text == "Тест")
+async def test_button_response(message: types.Message):
+    await message.answer("🙂")  # Отправляем смайлик
+
+# Запуск бота
+if __name__ == '__main__':
+    print("Бот запущен...")
+    executor.start_polling(dp, skip_updates=True)
