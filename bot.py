@@ -3,9 +3,13 @@ import hashlib
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telethon import TelegramClient
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения
+load_dotenv()
 
 # Получение данных из переменных окружения
 API_TOKEN = os.getenv('bot_token')  # Токен бота
@@ -35,16 +39,17 @@ def get_text_hash(text: str):
 # Команда /start
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    start_button = KeyboardButton("Выбрать канал")
-    keyboard.add(start_button)
-    await message.answer("Привет! Нажми 'Выбрать канал', чтобы начать.", reply_markup=keyboard)
+    keyboard = InlineKeyboardMarkup()
+    start_button = InlineKeyboardButton("Выбрать канал", callback_data="select_channel")
+    get_summary_button = InlineKeyboardButton("Получить саммари", callback_data="get_summary")
+    keyboard.add(start_button, get_summary_button)
+    await message.answer("Привет! Выберите действие:", reply_markup=keyboard)
 
-# Команда для выбора канала
-@dp.message(Command("select_channel"))
-async def select_channel(message: types.Message):
-    await message.answer("Введите название канала или ссылку на канал (например, @news_channel).")
-    user_channels[message.from_user.id] = []  # Инициализация списка каналов для пользователя
+# Обработка кнопки "Выбрать канал"
+@dp.callback_query(lambda c: c.data == "select_channel")
+async def process_select_channel(callback_query: types.CallbackQuery):
+    await bot.send_message(callback_query.from_user.id, "Введите название канала или ссылку на канал (например, @news_channel).")
+    user_channels[callback_query.from_user.id] = []  # Инициализация списка каналов для пользователя
 
 # Обработка введенного канала
 @dp.message(lambda message: message.text.startswith('@'))
@@ -79,9 +84,9 @@ async def fetch_messages(user_id):
                 await bot.send_message(user_id, f"Ошибка при обработке канала {channel}: {e}")
 
 # Команда для получения саммари
-@dp.message(Command("get_summary"))
-async def get_summary(message: types.Message):
-    await fetch_messages(message.from_user.id)
+@dp.callback_query(lambda c: c.data == "get_summary")
+async def get_summary(callback_query: types.CallbackQuery):
+    await fetch_messages(callback_query.from_user.id)
 
 # Планировщик задач для автоматического сбора новостей
 async def scheduled_task():
@@ -92,9 +97,9 @@ async def scheduled_task():
 # Главная асинхронная функция
 async def main():
     try:
-        # Подключение к Telethon
-        await client.start()
-        # Запуск бота
+        # Подключение к Telethon (передаем bot_token вместо номера телефона)
+        await client.start(bot_token=API_TOKEN)  # Передаем именно bot_token
+        # Запуск бота через aiogram
         await dp.start_polling(bot)
     except Exception as e:
         print(f"Произошла ошибка: {e}")
