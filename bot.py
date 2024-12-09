@@ -5,9 +5,8 @@ from aiogram import Bot, Dispatcher
 from handlers import router
 from scheduler import setup_scheduler, shutdown_scheduler
 from database import init_db
-from telethon.sync import TelegramClient
-from telethon.sessions import StringSession
-import os
+from telethon_client import start_telethon_client
+from config import Config
 
 # Configure logging
 logging.basicConfig(
@@ -16,34 +15,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Environment variables
-API_TOKEN = os.getenv("bot_token")
-API_ID = os.getenv("api_id")
-API_HASH = os.getenv("api_hash")
-WEBHOOK_URL = os.getenv("webhook_url")
-PORT = int(os.getenv("port", 3000))
-TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
-
-# Check environment variables
-missing_vars = [
-    var
-    for var, value in {
-        "bot_token": API_TOKEN,
-        "api_id": API_ID,
-        "api_hash": API_HASH,
-        "webhook_url": WEBHOOK_URL,
-        "TELEGRAM_PHONE": TELEGRAM_PHONE,
-    }.items()
-    if not value
-]
-if missing_vars:
-    logger.critical(f"Missing environment variables: {', '.join(missing_vars)}")
-    raise ValueError("One or more environment variables are missing.")
-
-# Initialize Bot, Dispatcher, and Telethon client
-bot = Bot(token=API_TOKEN)
+# Initialize Bot and Dispatcher
+bot = Bot(token=Config.BOT_TOKEN)
 dp = Dispatcher()
-client = TelegramClient("user_session", API_ID, API_HASH)
 
 # Register routes for the bot
 dp.include_router(router)
@@ -67,20 +41,12 @@ async def main():
     logger.info("Database initialized.")
 
     # Start Telethon client
-    async def code_callback():
-        logger.info("Waiting for the confirmation code...")
-        return input("Enter the code you received: ")  # Replace this with a mechanism to handle codes in a hosted environment
-
-    try:
-        await client.start(phone=lambda: TELEGRAM_PHONE, code_callback=code_callback)
-        logger.info("Telethon client started.")
-    except Exception as e:
-        logger.error(f"Error starting Telethon client: {e}")
-        raise
+    await start_telethon_client()
+    logger.info("Telethon client started.")
 
     # Set webhook
-    await bot.set_webhook(WEBHOOK_URL)
-    logger.info(f"Webhook set at {WEBHOOK_URL}.")
+    await bot.set_webhook(Config.WEBHOOK_URL)
+    logger.info(f"Webhook set at {Config.WEBHOOK_URL}.")
 
     # Setup scheduler
     setup_scheduler(bot)
@@ -91,9 +57,9 @@ async def main():
     app.router.add_post('/webhook', handle_webhook)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
+    site = web.TCPSite(runner, host="0.0.0.0", port=Config.PORT)
     await site.start()
-    logger.info(f"Webhook server started on port {PORT}.")
+    logger.info(f"Webhook server started on port {Config.PORT}.")
 
     try:
         while True:
@@ -101,7 +67,6 @@ async def main():
     finally:
         await bot.delete_webhook()
         logger.info("Webhook removed.")
-        await client.disconnect()
         await shutdown_scheduler()
         logger.info("Bot stopped.")
 
