@@ -1,58 +1,77 @@
-import sqlite3
+import asyncpg
+import os
 import logging
 
 logger = logging.getLogger(__name__)
-DB_FILE = "bot_database.db"
 
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("""
+async def init_db():
+    """
+    Initialize the PostgreSQL database and create tables if they don't exist.
+    """
+    conn = await asyncpg.connect(
+        user=os.getenv("PGUSER"),
+        password=os.getenv("PGPASSWORD"),
+        database=os.getenv("PGDATABASE"),
+        host=os.getenv("PGHOST"),
+        port=os.getenv("PGPORT"),
+    )
+    await conn.execute('''
         CREATE TABLE IF NOT EXISTS user_channels (
-            user_id INTEGER,
-            channel TEXT
+            user_id BIGINT PRIMARY KEY,
+            channels TEXT[]
         )
-    """)
-    conn.commit()
-    conn.close()
-    logger.info("Таблица user_channels проверена или создана.")
+    ''')
+    await conn.close()
+    logger.info("Database initialized.")
 
-def add_channel(user_id, channel):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT channel FROM user_channels WHERE user_id = ? AND channel = ?", (user_id, channel))
-        if cursor.fetchone() is None:
-            cursor.execute("INSERT INTO user_channels (user_id, channel) VALUES (?, ?)", (user_id, channel))
-            conn.commit()
-            logger.info(f"Канал {channel} добавлен для пользователя {user_id}.")
-            return True
-        else:
-            logger.warning(f"Канал {channel} уже существует для пользователя {user_id}.")
-            return False
-    finally:
-        conn.close()
-
-def get_user_channels(user_id):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT channel FROM user_channels WHERE user_id = ?", (user_id,))
-        channels = [row[0] for row in cursor.fetchall()]
-        logger.info(f"Получен список каналов для пользователя {user_id}: {channels}")
-        return channels
-    finally:
-        conn.close()
-
-def delete_user_data(user_id):
+async def add_channel(user_id, channel):
     """
-    Удаляет все данные пользователя из базы данных.
+    Add a channel to the user's list of channels.
     """
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    try:
-        cursor.execute("DELETE FROM user_channels WHERE user_id = ?", (user_id,))
-        conn.commit()
-        logger.info(f"Данные пользователя {user_id} удалены.")
-    finally:
-        conn.close()
+    conn = await asyncpg.connect(
+        user=os.getenv("PGUSER"),
+        password=os.getenv("PGPASSWORD"),
+        database=os.getenv("PGDATABASE"),
+        host=os.getenv("PGHOST"),
+        port=os.getenv("PGPORT"),
+    )
+    await conn.execute('''
+        INSERT INTO user_channels (user_id, channels)
+        VALUES ($1, ARRAY[$2])
+        ON CONFLICT (user_id) DO UPDATE
+        SET channels = array_append(user_channels.channels, $2)
+    ''', user_id, channel)
+    await conn.close()
+
+async def get_channels(user_id):
+    """
+    Get the list of channels for a user.
+    """
+    conn = await asyncpg.connect(
+        user=os.getenv("PGUSER"),
+        password=os.getenv("PGPASSWORD"),
+        database=os.getenv("PGDATABASE"),
+        host=os.getenv("PGHOST"),
+        port=os.getenv("PGPORT"),
+    )
+    result = await conn.fetchval('''
+        SELECT channels FROM user_channels WHERE user_id = $1
+    ''', user_id)
+    await conn.close()
+    return result or []
+
+async def delete_user_data(user_id):
+    """
+    Delete all data for a user.
+    """
+    conn = await asyncpg.connect(
+        user=os.getenv("PGUSER"),
+        password=os.getenv("PGPASSWORD"),
+        database=os.getenv("PGDATABASE"),
+        host=os.getenv("PGHOST"),
+        port=os.getenv("PGPORT"),
+    )
+    await conn.execute('''
+        DELETE FROM user_channels WHERE user_id = $1
+    ''', user_id)
+    await conn.close()
