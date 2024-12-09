@@ -2,11 +2,11 @@ import logging
 import asyncio
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
 from handlers import router
 from scheduler import setup_scheduler, shutdown_scheduler
 from database import init_db
-from telethon.sync import TelegramClient
-from telethon.sessions import StringSession
+from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
 import os
 
@@ -24,95 +24,125 @@ API_HASH = os.getenv("api_hash")
 WEBHOOK_URL = os.getenv("webhook_url")
 PORT = int(os.getenv("PORT", 3000))
 TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
-ALLOWED_USER_ID = int(os.getenv("ALLOWED_USER_ID"))
+TELEGRAM_PASSWORD = os.getenv("TELEGRAM_PASSWORD")
+ALLOWED_USER_ID = int(os.getenv("ALLOWED_USER_ID", 0))
+DB_DSN = os.getenv("DATABASE_URL")
 
-if not API_TOKEN or not API_ID or not API_HASH or not WEBHOOK_URL:
+# Check environment variables
+missing_vars = [
+    ("API_TOKEN", API_TOKEN),
+    ("API_ID", API_ID),
+    ("API_HASH", API_HASH),
+    ("WEBHOOK_URL", WEBHOOK_URL),
+    ("TELEGRAM_PHONE", TELEGRAM_PHONE),
+    ("DATABASE_URL", DB_DSN),
+]
+missing = [var for var, value in missing_vars if not value]
+if missing:
+    logger.critical(f"Missing environment variables: {', '.join(missing)}")
     raise ValueError("Missing required environment variables!")
 
-# Path to the session file
-SESSION_FILE_PATH = "/data/telegram_session"
-
-# Initialize bot and dispatcher
+# Initialize bot, dispatcher, and Telethon client
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
+client = TelegramClient("user_session", API_ID, API_HASH)
 
-# Telethon client with file-based session
-client = TelegramClient(
-    StringSession(),
-    API_ID,
-    API_HASH,
-    system_version="TelethonSession",
-    session=SESSION_FILE_PATH
-)
+# Store the event loop for external callbacks
+event_loop = asyncio.get_event_loop()
 
-telethon_code = None
+# Global flag for awaiting code
+awaiting_code = False
 
 
-async def handle_code_request(message: types.Message):
+async def request_code(message: types.Message):
     """
-    Handle incoming messages to request a Telegram code.
+    Request the confirmation code from the user via bot message.
     """
-    global telethon_code
+    global awaiting_code
     if message.from_user.id != ALLOWED_USER_ID:
-        await message.answer("Access denied.")
+        await message.answer("You are not authorized to send the code.")
         return
 
-    telethon_code = message.text.strip()
-    await message.answer("Code received. Restarting login process...")
-    # Stop event loop to restart client
-    asyncio.get_event_loop().stop()
+    if not awaiting_code:
+        await message.answer("Not waiting for a confirmation code right now.")
+        return
+
+    code = message.text.strip()
+    try:
+        await client.sign_in(phone=TELEGRAM_PHONE, code=code)
+        awaiting_code = False
+        await message.answer("Authorization completed successfully!")
+    except Exception as e:
+        logger.error(f"Failed to sign in: {e}")
+        await message.answer(f"Failed to authorize with this code: {e}")
 
 
-async def request_code():
+async def handle_webhook(request):
     """
-    Request the Telegram code from the user via the bot chat.
+    Handles webhook requests from Telegram.
     """
-    await bot.send_message(ALLOWED_USER_ID, "Please enter the Telegram code you received:")
+    try:
+        update = await request.json()
+        await dp.feed_update(bot=bot, update=update)
+        return web.Response()
+    except Exception as e:
+        logger.error(f"Error handling webhook: {e}")
+        return web.Response(status=500)
+
+
+@dp.message(Command(commands=["start"]))
+async def start_handler(message: types.Message):
+    """
+    Start command handler for testing bot response.
+    """
+    await message.answer("Bot is running! 🚀")
 
 
 async def main():
     logger.info("Starting bot...")
+    # Initialize database
     await init_db()
+    logger.info("Database initialized successfully.")
 
-    logger.info("Database initialized.")
-    dp.include_router(router)
+    # Start Telethon client
+    try:
+        await client.start(phone=lambda: TELEGRAM_PHONE)
+        logger.info("Telethon client connected.")
+    except SessionPasswordNeededError:
+        if TELEGRAM_PASSWORD:
+            await client.sign_in(password=TELEGRAM_PASSWORD)
+        else:
+            logger.error("Two-factor authentication password is required but not provided.")
+            raise
+
+    # Handle cases when user is not authorized
+    global awaiting_code
+    if not client.is_user_authorized():
+        awaiting_code = True
+        logger.info("Waiting for the confirmation code via bot message.")
 
     # Set webhook
     await bot.set_webhook(WEBHOOK_URL)
     logger.info(f"Webhook set at {WEBHOOK_URL}.")
 
-    # Initialize Telethon client
-    await client.connect()
-    if not await client.is_user_authorized():
-        try:
-            await client.send_code_request(TELEGRAM_PHONE)
-            await request_code()
-
-            # Wait until the code is received via bot
-            global telethon_code
-            while telethon_code is None:
-                await asyncio.sleep(1)
-
-            await client.sign_in(TELEGRAM_PHONE, telethon_code)
-        except SessionPasswordNeededError:
-            await bot.send_message(ALLOWED_USER_ID, "Please provide your Telegram password:")
-            while telethon_code is None:
-                await asyncio.sleep(1)
-            await client.sign_in(password=telethon_code)
-
-    logger.info("Telethon client started.")
-
     # Start aiohttp server
     app = web.Application()
-    app.router.add_post('/webhook', dp.start_polling)
+    app.router.add_post('/webhook', handle_webhook)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
     await site.start()
-
     logger.info(f"Webhook server started on port {PORT}.")
-    await asyncio.Event().wait()
 
+    # Run the bot
+    try:
+        while True:
+            await asyncio.sleep(3600)
+    finally:
+        await bot.delete_webhook()
+        logger.info("Webhook removed.")
+        await client.disconnect()
+        logger.info("Telethon client disconnected.")
 
 if __name__ == "__main__":
     try:
