@@ -6,7 +6,6 @@ from handlers import router
 from scheduler import setup_scheduler, shutdown_scheduler
 from database import init_db
 from telethon.sync import TelegramClient
-from telethon.sessions import StringSession
 import os
 
 # Configure logging
@@ -20,8 +19,8 @@ logger = logging.getLogger(__name__)
 API_TOKEN = os.getenv("bot_token")
 API_ID = os.getenv("api_id")
 API_HASH = os.getenv("api_hash")
-WEBHOOK_URL = os.getenv("webhook_url")
-PORT = int(os.getenv("port", 3000))
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Обратите внимание на корректный регистр!
+PORT = int(os.getenv("PORT", 3000))
 TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
 
 # Check environment variables
@@ -31,7 +30,7 @@ missing_vars = [
         "bot_token": API_TOKEN,
         "api_id": API_ID,
         "api_hash": API_HASH,
-        "webhook_url": WEBHOOK_URL,
+        "WEBHOOK_URL": WEBHOOK_URL,
         "TELEGRAM_PHONE": TELEGRAM_PHONE,
     }.items()
     if not value
@@ -69,7 +68,7 @@ async def main():
     # Start Telethon client
     async def code_callback():
         logger.info("Waiting for the confirmation code...")
-        return TELEGRAM_PHONE  # Automatically use phone number
+        return input("Enter the confirmation code: ")
 
     async def password_callback():
         logger.info("No password set, skipping...")
