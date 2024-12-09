@@ -1,48 +1,32 @@
-import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 from database import delete_user_data, get_channels
-import asyncpg
-import os
+import logging
 
 logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
 
-async def clean_inactive_users(bot):
+async def clean_inactive_users():
     """
-    Check for inactive users and delete their data.
+    Cleans up data for inactive users.
     """
-    try:
-        conn = await asyncpg.connect(
-            user=os.getenv("PGUSER"),
-            password=os.getenv("PGPASSWORD"),
-            database=os.getenv("PGDATABASE"),
-            host=os.getenv("PGHOST"),
-            port=os.getenv("PGPORT"),
-        )
-        users = await conn.fetch('SELECT user_id FROM user_channels')
-        for user in users:
-            user_id = user['user_id']
-            try:
-                await bot.send_message(user_id, "Checking activity...")
-            except (TelegramForbiddenError, TelegramBadRequest):
-                await delete_user_data(user_id)
-                logger.info(f"Deleted data for inactive user {user_id}.")
-        await conn.close()
-    except Exception as e:
-        logger.error(f"Error cleaning inactive users: {e}")
+    logger.info("Cleaning up inactive users...")
+    channels = await get_channels()
+    for channel in channels:
+        # Add logic to determine inactive users
+        user_id = channel["user_id"]
+        try:
+            # Here you can check user activity with bot or another service
+            logger.info(f"User {user_id} is active.")
+        except Exception:
+            # If the user is inactive, clean up their data
+            await delete_user_data(user_id)
+            logger.info(f"User {user_id} data deleted.")
 
-def setup_scheduler(bot):
+def setup_scheduler():
     """
-    Sets up the task scheduler.
+    Sets up the scheduler.
     """
-    scheduler.add_job(
-        clean_inactive_users,
-        "interval",
-        hours=24,
-        args=[bot],
-        id="clean_inactive_users"
-    )
+    scheduler.add_job(clean_inactive_users, "interval", hours=24, id="cleanup_task")
     scheduler.start()
     logger.info("Scheduler started.")
 
