@@ -1,7 +1,7 @@
 import logging
 import asyncio
 from aiohttp import web
-from aiogram import Bot, Dispatcher, DefaultBotProperties
+from aiogram import Bot, Dispatcher
 from aiogram.types import Update
 from aiogram.fsm.storage.memory import MemoryStorage
 from handlers import router
@@ -36,10 +36,7 @@ if missing_vars:
     raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
 
 # Инициализация бота и диспетчера
-bot = Bot(
-    token=BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode="HTML")  # Установка parse_mode через DefaultBotProperties
-)
+bot = Bot(token=BOT_TOKEN)  # parse_mode будет задан в отдельных функциях
 dp = Dispatcher(storage=MemoryStorage())
 
 # Подключение обработчиков
