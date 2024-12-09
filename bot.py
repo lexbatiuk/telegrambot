@@ -6,6 +6,7 @@ from handlers import router
 from scheduler import setup_scheduler, shutdown_scheduler
 from database import init_db
 from telethon.sync import TelegramClient
+from telethon.sessions import StringSession
 import os
 
 # Configure logging
@@ -19,8 +20,8 @@ logger = logging.getLogger(__name__)
 API_TOKEN = os.getenv("bot_token")
 API_ID = os.getenv("api_id")
 API_HASH = os.getenv("api_hash")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Обратите внимание на корректный регистр!
-PORT = int(os.getenv("PORT", 3000))
+WEBHOOK_URL = os.getenv("webhook_url")
+PORT = int(os.getenv("port", 3000))
 TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
 
 # Check environment variables
@@ -30,7 +31,7 @@ missing_vars = [
         "bot_token": API_TOKEN,
         "api_id": API_ID,
         "api_hash": API_HASH,
-        "WEBHOOK_URL": WEBHOOK_URL,
+        "webhook_url": WEBHOOK_URL,
         "TELEGRAM_PHONE": TELEGRAM_PHONE,
     }.items()
     if not value
@@ -68,18 +69,14 @@ async def main():
     # Start Telethon client
     async def code_callback():
         logger.info("Waiting for the confirmation code...")
-        return input("Enter the confirmation code: ")
+        return input("Enter the code you received: ")  # Replace this with a mechanism to handle codes in a hosted environment
 
-    async def password_callback():
-        logger.info("No password set, skipping...")
-        return None  # Assuming no two-factor password is set
-
-    await client.start(
-        phone=lambda: TELEGRAM_PHONE,
-        code_callback=code_callback,
-        password_callback=password_callback,
-    )
-    logger.info("Telethon client started.")
+    try:
+        await client.start(phone=lambda: TELEGRAM_PHONE, code_callback=code_callback)
+        logger.info("Telethon client started.")
+    except Exception as e:
+        logger.error(f"Error starting Telethon client: {e}")
+        raise
 
     # Set webhook
     await bot.set_webhook(WEBHOOK_URL)
