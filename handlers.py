@@ -4,7 +4,7 @@ from aiogram.filters import Command
 from database import add_channel, get_user_channels
 
 # Список разрешенных пользователей
-ALLOWED_USERS = [your_telegram_id]  # Замени your_telegram_id на свой Telegram ID
+ALLOWED_USERS = [323173216]  # Замени your_telegram_id на свой Telegram ID
 
 def register_handlers(dp: Dispatcher):
     # Проверка доступа
