@@ -1,7 +1,7 @@
 import logging
 import asyncio
 from aiohttp import web
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, DefaultBotProperties
 from aiogram.types import Update
 from aiogram.fsm.storage.memory import MemoryStorage
 from handlers import router
@@ -36,7 +36,10 @@ if missing_vars:
     raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
 
 # Инициализация бота и диспетчера
-bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
+bot = Bot(
+    token=BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode="HTML")  # Установка parse_mode через DefaultBotProperties
+)
 dp = Dispatcher(storage=MemoryStorage())
 
 # Подключение обработчиков
@@ -76,8 +79,6 @@ async def main():
     try:
         while True:
             await asyncio.sleep(3600)  # Keep the bot running
-    except Exception as e:
-        logger.error(f"Unexpected error: {e}")
     finally:
         await bot.delete_webhook()
         logger.info("Webhook removed.")
