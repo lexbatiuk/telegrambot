@@ -20,12 +20,28 @@ API_TOKEN = os.getenv('bot_token')
 API_ID = os.getenv('api_id')
 API_HASH = os.getenv('api_hash')
 WEBHOOK_URL = os.getenv('webhook_url')
-PORT = int(os.getenv('port', 3000))
-TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
+TELEGRAM_PHONE = os.getenv('TELEGRAM_PHONE')
+ALLOWED_USER_ID = os.getenv('ALLOWED_USER_ID')
+PORT = int(os.getenv('PORT', 3000))
 
-if not API_TOKEN or not API_ID or not API_HASH or not WEBHOOK_URL or not TELEGRAM_PHONE:
-    logger.critical("One or more environment variables are missing. Exiting.")
-    raise ValueError("Environment variables are missing.")
+# Check for missing environment variables
+missing_env_vars = []
+if not API_TOKEN:
+    missing_env_vars.append("bot_token")
+if not API_ID:
+    missing_env_vars.append("api_id")
+if not API_HASH:
+    missing_env_vars.append("api_hash")
+if not WEBHOOK_URL:
+    missing_env_vars.append("webhook_url")
+if not TELEGRAM_PHONE:
+    missing_env_vars.append("TELEGRAM_PHONE")
+if not ALLOWED_USER_ID:
+    missing_env_vars.append("ALLOWED_USER_ID")
+
+if missing_env_vars:
+    logger.critical(f"Missing environment variables: {', '.join(missing_env_vars)}")
+    raise ValueError("One or more environment variables are missing.")
 
 # Initialize Bot, Dispatcher, and Telethon client
 bot = Bot(token=API_TOKEN)
@@ -55,7 +71,7 @@ async def main():
 
     # Start Telethon client
     await client.start(phone=TELEGRAM_PHONE)
-    logger.info("Telethon client started successfully.")
+    logger.info("Telethon client started.")
 
     # Set webhook
     await bot.set_webhook(WEBHOOK_URL)
