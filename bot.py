@@ -1,6 +1,7 @@
 import logging
 import asyncio
 from aiogram import Bot, Dispatcher
+from aiohttp import web
 from handlers import register_handlers
 from scheduler import setup_scheduler
 from database import init_db
@@ -19,6 +20,7 @@ API_TOKEN = os.getenv('bot_token')
 API_ID = os.getenv('api_id')
 API_HASH = os.getenv('api_hash')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
+WEBHOOK_PATH = "/webhook"  # Path for webhook
 
 if not API_TOKEN or not API_ID or not API_HASH or not WEBHOOK_URL:
     logger.critical("Environment variables `bot_token`, `api_id`, `api_hash`, or `WEBHOOK_URL` are missing. Exiting.")
@@ -31,6 +33,21 @@ dp = Dispatcher()
 # Initialize Telethon client
 client = TelegramClient('user_session', API_ID, API_HASH)
 
+
+async def on_startup(app: web.Application):
+    """Callback to handle app startup."""
+    await bot.set_webhook(f"{WEBHOOK_URL}{WEBHOOK_PATH}")
+    logger.info(f"Webhook set to {WEBHOOK_URL}{WEBHOOK_PATH}")
+
+
+async def on_shutdown(app: web.Application):
+    """Callback to handle app shutdown."""
+    await bot.session.close()
+    await client.disconnect()
+    logger.info("Bot session and Telethon client closed.")
+    logger.info("Shutdown completed.")
+
+
 async def main():
     logger.info("Starting bot...")
     init_db()
@@ -42,22 +59,21 @@ async def main():
     setup_scheduler(bot)
     logger.info("Scheduler initialized.")
 
-    # Set up webhook
-    await bot.set_webhook(WEBHOOK_URL)
-    logger.info(f"Webhook set to {WEBHOOK_URL}")
-
-    # Start polling using webhook
-    from aiogram.webhook.aiohttp_server import setup_application, SimpleRequestHandler
-    from aiohttp import web
-
+    # Create webhook server
     app = web.Application()
-    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
+    app.router.add_post(WEBHOOK_PATH, dp.as_handler())
+    app.on_startup.append(on_startup)
+    app.on_shutdown.append(on_shutdown)
+
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, port=int(os.getenv("PORT", 8443)))  # Default port for webhook
+    site = web.TCPSite(runner, host="0.0.0.0", port=8443)  # Use port 8443 for Telegram webhook
+    logger.info("Starting webhook server...")
     await site.start()
 
-    logger.info("Webhook server started.")
+    logger.info("Bot is running. Waiting for updates...")
+    await asyncio.Event().wait()  # Keep running until interrupted
+
 
 if __name__ == "__main__":
     try:
