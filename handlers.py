@@ -1,50 +1,32 @@
-from aiogram import Router, types
-from aiogram.filters import Command
+from aiogram import Router
+from aiogram.types import Message
 from database import add_channel, get_user_channels
 
-router = Router()  # Создаем объект Router
+router = Router()
 
-@router.message(Command("start"))
-async def send_welcome(message: types.Message):
-    """
-    Обработчик команды /start.
-    """
-    keyboard = types.ReplyKeyboardMarkup(
-        keyboard=[
-            [types.KeyboardButton(text="Add Channel"), types.KeyboardButton(text="My Channels")]
-        ],
-        resize_keyboard=True
-    )
-    await message.answer("Welcome! Use the menu to interact with the bot.", reply_markup=keyboard)
 
-@router.message(lambda message: message.text == "Add Channel")
-async def select_channel(message: types.Message):
-    """
-    Обработчик для кнопки 'Add Channel'.
-    """
-    await message.answer("Please enter the channel username (e.g., @example_channel).")
+@router.message(commands=["start"])
+async def start_command(message: Message):
+    await message.answer("Welcome to the bot!")
 
-@router.message(lambda message: message.text.startswith('@'))
-async def add_channel_handler(message: types.Message):
-    """
-    Обработчик для добавления канала.
-    """
-    user_id = message.from_user.id
-    channel = message.text.strip()
-    if add_channel(user_id, channel):
-        await message.answer(f"Channel {channel} has been successfully added!")
-    else:
-        await message.answer(f"Channel {channel} is already added.")
 
-@router.message(lambda message: message.text == "My Channels")
-async def show_channels(message: types.Message):
-    """
-    Обработчик для показа списка каналов.
-    """
-    user_id = message.from_user.id
-    channels = get_user_channels(user_id)
-    if channels:
-        channel_list = "\n".join(channels)
-        await message.answer(f"Your channels:\n{channel_list}")
-    else:
-        await message.answer("You don't have any channels added yet.")
+@router.message(commands=["add_channel"])
+async def add_channel_command(message: Message):
+    args = message.get_args()
+    if not args:
+        await message.answer("Please provide a channel ID.")
+        return
+
+    await add_channel(message.from_user.id, args)
+    await message.answer(f"Channel {args} added successfully.")
+
+
+@router.message(commands=["list_channels"])
+async def list_channels_command(message: Message):
+    channels = await get_user_channels(message.from_user.id)
+    if not channels:
+        await message.answer("You have no channels added.")
+        return
+
+    channel_list = "\n".join([record["channel_id"] for record in channels])
+    await message.answer(f"Your channels:\n{channel_list}")
