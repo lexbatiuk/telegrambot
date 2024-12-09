@@ -2,10 +2,6 @@ import logging
 import asyncio
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
-from handlers import router
-from scheduler import setup_scheduler, shutdown_scheduler
-from database import init_db
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
 import os
@@ -21,7 +17,7 @@ logger = logging.getLogger(__name__)
 API_TOKEN = os.getenv("bot_token")
 API_ID = os.getenv("api_id")
 API_HASH = os.getenv("api_hash")
-WEBHOOK_URL = os.getenv("webhook_url")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PORT = int(os.getenv("PORT", 3000))
 TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
 TELEGRAM_PASSWORD = os.getenv("TELEGRAM_PASSWORD")
@@ -39,16 +35,14 @@ missing_vars = [
 ]
 missing = [var for var, value in missing_vars if not value]
 if missing:
-    logger.critical(f"Missing environment variables: {', '.join(missing)}")
+    missing_names = ", ".join([name for name, _ in missing])
+    logger.critical(f"Missing environment variables: {missing_names}")
     raise ValueError("Missing required environment variables!")
 
 # Initialize bot, dispatcher, and Telethon client
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 client = TelegramClient("user_session", API_ID, API_HASH)
-
-# Store the event loop for external callbacks
-event_loop = asyncio.get_event_loop()
 
 # Global flag for awaiting code
 awaiting_code = False
@@ -90,7 +84,7 @@ async def handle_webhook(request):
         return web.Response(status=500)
 
 
-@dp.message(Command(commands=["start"]))
+@dp.message(commands=["start"])
 async def start_handler(message: types.Message):
     """
     Start command handler for testing bot response.
@@ -100,11 +94,7 @@ async def start_handler(message: types.Message):
 
 async def main():
     logger.info("Starting bot...")
-    # Initialize database
-    await init_db()
-    logger.info("Database initialized successfully.")
-
-    # Start Telethon client
+    # Initialize Telethon client
     try:
         await client.start(phone=lambda: TELEGRAM_PHONE)
         logger.info("Telethon client connected.")
