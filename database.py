@@ -1,60 +1,68 @@
 import asyncpg
-import logging
-from config import Config
+import os
 
-logger = logging.getLogger(__name__)
+# Получение строки подключения из переменных окружения
+DB_DSN = os.getenv("DATABASE_URL")  # Railway предоставляет эту переменную
 
-# Создание пула соединений с базой данных
-pool = None
+if not DB_DSN:
+    raise ValueError("DATABASE_URL is not set in the environment variables.")
 
 async def init_db():
-    """Инициализация пула соединений и создание таблиц."""
-    global pool
-    pool = await asyncpg.create_pool(dsn=Config.DATABASE_URL)
-    async with pool.acquire() as conn:
+    """
+    Инициализирует соединение с базой данных и создает таблицы, если их нет.
+    """
+    conn = await asyncpg.connect(dsn=DB_DSN)
+    try:
+        # Создаем таблицу user_channels
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS user_channels (
                 user_id BIGINT NOT NULL,
-                channel_id BIGINT NOT NULL,
-                UNIQUE(user_id, channel_id)
-            );
-            CREATE TABLE IF NOT EXISTS temp_data (
-                user_id BIGINT PRIMARY KEY,
-                temp_code TEXT
-            );
+                channel_name TEXT NOT NULL,
+                UNIQUE(user_id, channel_name)
+            )
         """)
-    logger.info("Database initialized successfully.")
+        print("Database initialized successfully.")
+    finally:
+        await conn.close()
 
-async def add_channel(user_id: int, channel_id: int):
-    """Добавление канала в базу данных."""
-    async with pool.acquire() as conn:
-        await conn.execute("""
-            INSERT INTO user_channels (user_id, channel_id)
-            VALUES ($1, $2)
-            ON CONFLICT DO NOTHING;
-        """, user_id, channel_id)
+async def add_channel(user_id: int, channel_name: str):
+    """
+    Добавляет канал в базу данных для указанного пользователя.
+    """
+    conn = await asyncpg.connect(dsn=DB_DSN)
+    try:
+        await conn.execute(
+            "INSERT INTO user_channels (user_id, channel_name) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            user_id, channel_name
+        )
+        print(f"Channel '{channel_name}' added for user {user_id}.")
+    finally:
+        await conn.close()
 
 async def get_user_channels(user_id: int):
-    """Получение списка каналов пользователя."""
-    async with pool.acquire() as conn:
-        rows = await conn.fetch("""
-            SELECT channel_id FROM user_channels WHERE user_id = $1;
-        """, user_id)
-        return [row["channel_id"] for row in rows]
+    """
+    Возвращает все каналы для указанного пользователя.
+    """
+    conn = await asyncpg.connect(dsn=DB_DSN)
+    try:
+        rows = await conn.fetch(
+            "SELECT channel_name FROM user_channels WHERE user_id = $1",
+            user_id
+        )
+        return [row['channel_name'] for row in rows]
+    finally:
+        await conn.close()
 
-async def save_temp_code(user_id: int, code: str):
-    """Сохранение временного кода в базу данных."""
-    async with pool.acquire() as conn:
-        await conn.execute("""
-            INSERT INTO temp_data (user_id, temp_code)
-            VALUES ($1, $2)
-            ON CONFLICT (user_id) DO UPDATE SET temp_code = $2;
-        """, user_id, code)
-
-async def get_temp_code(user_id: int):
-    """Получение временного кода из базы данных."""
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow("""
-            SELECT temp_code FROM temp_data WHERE user_id = $1;
-        """, user_id)
-        return row["temp_code"] if row else None
+async def delete_user_data(user_id: int):
+    """
+    Удаляет все данные пользователя из базы данных.
+    """
+    conn = await asyncpg.connect(dsn=DB_DSN)
+    try:
+        await conn.execute(
+            "DELETE FROM user_channels WHERE user_id = $1",
+            user_id
+        )
+        print(f"All data for user {user_id} has been deleted.")
+    finally:
+        await conn.close()
