@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher
 from handlers import router
 from scheduler import setup_scheduler, shutdown_scheduler
 from database import init_db
-from telethon.sync import TelegramClient
+from telethon import TelegramClient
 import os
 
 # Configure logging
@@ -21,7 +21,8 @@ API_ID = os.getenv("api_id")
 API_HASH = os.getenv("api_hash")
 WEBHOOK_URL = os.getenv("webhook_url")
 PORT = int(os.getenv("port", 3000))
-TELETHON_SESSION_STRING = os.getenv("TELETHON_SESSION_STRING")
+TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
+TELEGRAM_PASSWORD = os.getenv("TELEGRAM_PASSWORD")
 
 # Check environment variables
 missing_vars = [
@@ -31,7 +32,7 @@ missing_vars = [
         "api_id": API_ID,
         "api_hash": API_HASH,
         "webhook_url": WEBHOOK_URL,
-        "TELETHON_SESSION_STRING": TELETHON_SESSION_STRING,
+        "TELEGRAM_PHONE": TELEGRAM_PHONE,
     }.items()
     if not value
 ]
@@ -39,10 +40,10 @@ if missing_vars:
     logger.critical(f"Missing environment variables: {', '.join(missing_vars)}")
     raise ValueError("One or more environment variables are missing.")
 
-# Initialize Bot, Dispatcher, and Telethon client
+# Initialize Bot and Dispatcher
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
-client = TelegramClient(TELETHON_SESSION_STRING, API_ID, API_HASH)
+client = TelegramClient("/data/user_session", API_ID, API_HASH)
 
 # Register routes for the bot
 dp.include_router(router)
@@ -62,15 +63,16 @@ async def handle_webhook(request):
 async def main():
     logger.info("Starting bot...")
     # Initialize the database
-    init_db()
-    logger.info("Database initialized.")
+    await init_db()
 
     # Start Telethon client
-    await client.connect()
-    if not await client.is_user_authorized():
-        logger.critical("Telethon session is not authorized. Please re-generate the session string.")
-        raise ValueError("Telethon session not authorized.")
+    async def code_callback():
+        return input("Enter the confirmation code: ")
 
+    async def password_callback():
+        return TELEGRAM_PASSWORD
+
+    await client.start(phone=lambda: TELEGRAM_PHONE, password=password_callback)
     logger.info("Telethon client started.")
 
     # Set webhook
@@ -79,7 +81,6 @@ async def main():
 
     # Setup scheduler
     setup_scheduler(bot)
-    logger.info("Scheduler initialized.")
 
     # Start aiohttp server
     app = web.Application()
