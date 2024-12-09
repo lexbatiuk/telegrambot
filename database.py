@@ -1,43 +1,33 @@
 import asyncpg
 import os
+import logging
 
-# Database URL from environment variables
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 async def init_db():
-    """
-    Initializes the database and creates necessary tables.
-    """
-    create_table_query = """
+    conn = await asyncpg.connect(DATABASE_URL)
+    await conn.execute("""
     CREATE TABLE IF NOT EXISTS user_channels (
-        user_id BIGINT NOT NULL,
-        channel_id TEXT NOT NULL,
-        PRIMARY KEY (user_id, channel_id)
-    );
-    """
-    conn = await asyncpg.connect(DATABASE_URL)
-    await conn.execute(create_table_query)
+        user_id BIGINT PRIMARY KEY,
+        channels TEXT[]
+    )
+    """)
     await conn.close()
 
-async def add_channel(user_id: int, channel_id: str):
-    """
-    Adds a new channel for a user.
-    """
-    insert_query = """
-    INSERT INTO user_channels (user_id, channel_id)
+async def add_channel(user_id, channel):
+    conn = await asyncpg.connect(DATABASE_URL)
+    await conn.execute("""
+    INSERT INTO user_channels (user_id, channels)
     VALUES ($1, $2)
-    ON CONFLICT (user_id, channel_id) DO NOTHING;
-    """
-    conn = await asyncpg.connect(DATABASE_URL)
-    await conn.execute(insert_query, user_id, channel_id)
+    ON CONFLICT (user_id)
+    DO UPDATE SET channels = array_append(user_channels.channels, $2)
+    """, user_id, channel)
     await conn.close()
 
-async def get_user_channels(user_id: int):
-    """
-    Retrieves a list of channels for a user.
-    """
-    select_query = "SELECT channel_id FROM user_channels WHERE user_id = $1;"
+async def get_user_channels(user_id):
     conn = await asyncpg.connect(DATABASE_URL)
-    rows = await conn.fetch(select_query, user_id)
+    channels = await conn.fetchval("""
+    SELECT channels FROM user_channels WHERE user_id = $1
+    """, user_id)
     await conn.close()
-    return [row['channel_id'] for row in rows]
+    return channels or []
