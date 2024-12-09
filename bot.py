@@ -1,94 +1,70 @@
 import asyncio
 import logging
-import os
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.types import Update
 from aiogram.fsm.storage.memory import MemoryStorage
+from telethon import TelegramClient
+from telethon.sessions import StringSession
 from handlers import router
 from database import init_db
-from telethon import TelegramClient
-from telethon.errors import SessionPasswordNeededError
+from config import Config
 
-# Logging configuration
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+# Логгирование
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Environment variables
-BOT_TOKEN = os.getenv("bot_token")
-API_ID = int(os.getenv("api_id"))
-API_HASH = os.getenv("api_hash")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.getenv("PORT", 3000))
-TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
-TELEGRAM_PASSWORD = os.getenv("TELEGRAM_PASSWORD")
-SESSION_PATH = "/data/telegram.session"
+# Валидация переменных окружения
+Config.validate()
 
-# Verify environment variables
-required_vars = [BOT_TOKEN, API_ID, API_HASH, WEBHOOK_URL, TELEGRAM_PHONE]
-if not all(required_vars):
-    raise ValueError("Missing required environment variables!")
-
-# Bot, Dispatcher, and Storage
-bot = Bot(token=BOT_TOKEN)
+# Инициализация бота и диспетчера
+bot = Bot(token=Config.BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
-
-# Telethon client
-client = TelegramClient(SESSION_PATH, API_ID, API_HASH)
-
-# Include router from handlers
 dp.include_router(router)
 
+# Инициализация Telethon клиента
+client = TelegramClient(StringSession(), Config.API_ID, Config.API_HASH)
+
 async def handle_webhook(request):
-    """Handle incoming updates from Telegram."""
-    try:
-        update = Update(**await request.json())
-        await dp.feed_update(bot, update)
-        return web.Response(status=200)
-    except Exception as e:
-        logger.error(f"Error handling webhook: {e}")
-        return web.Response(status=500)
+    """Обработка входящих обновлений от Telegram."""
+    update = Update(**await request.json())
+    await dp.feed_update(bot, update)
+    return web.Response(status=200)
 
 async def main():
-    """Main function to initialize and run the bot."""
+    """Основная функция запуска бота."""
     logger.info("Starting bot...")
 
-    # Initialize the database
+    # Инициализация базы данных
     await init_db()
-    logger.info("Database initialized.")
 
-    # Start Telethon client
-    if not await client.connect():
-        logger.info("Connecting to Telegram...")
-        try:
-            if not await client.is_user_authorized():
-                await client.send_code_request(TELEGRAM_PHONE)
-                code = input("Enter the Telegram code: ").strip()
-                await client.sign_in(TELEGRAM_PHONE, code)
+    # Старт Telethon клиента
+    async def code_callback():
+        code = input("Enter Telegram code: ").strip()
+        return code
 
-                if await client.is_user_authorized() is False:
-                    logger.info("Two-factor authentication required.")
-                    await client.sign_in(password=TELEGRAM_PASSWORD)
-        except SessionPasswordNeededError:
-            logger.error("Two-factor authentication failed. Please check your password.")
+    async def password_callback():
+        return Config.TELEGRAM_PASSWORD
 
+    await client.start(
+        phone=lambda: Config.TELEGRAM_PHONE,
+        code_callback=code_callback,
+        password_callback=password_callback
+    )
     logger.info("Telethon client started.")
 
-    # Set webhook
-    await bot.set_webhook(WEBHOOK_URL)
-    logger.info(f"Webhook set at {WEBHOOK_URL}.")
+    # Установка webhook
+    await bot.set_webhook(Config.WEBHOOK_URL)
+    logger.info(f"Webhook set at {Config.WEBHOOK_URL}.")
 
-    # Start aiohttp server
+    # Запуск aiohttp сервера
     app = web.Application()
     app.router.add_post("/webhook", handle_webhook)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
+    site = web.TCPSite(runner, host="0.0.0.0", port=Config.PORT)
     await site.start()
-    logger.info(f"Webhook server started on port {PORT}.")
+    logger.info(f"Webhook server started on port {Config.PORT}.")
 
     try:
         while True:
