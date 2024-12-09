@@ -1,5 +1,5 @@
 import asyncpg
-import os
+import os  # Добавляем импорт os
 
 DB_DSN = os.getenv("DATABASE_URL")  # Получаем URL базы данных из переменных окружения
 
