@@ -19,28 +19,25 @@ logger = logging.getLogger(__name__)
 API_TOKEN = os.getenv('bot_token')
 API_ID = os.getenv('api_id')
 API_HASH = os.getenv('api_hash')
-WEBHOOK_URL = os.getenv('webhook_url')
 TELEGRAM_PHONE = os.getenv('TELEGRAM_PHONE')
-ALLOWED_USER_ID = os.getenv('ALLOWED_USER_ID')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 PORT = int(os.getenv('PORT', 3000))
 
-# Check for missing environment variables
-missing_env_vars = []
+# Validate environment variables
+missing_vars = []
 if not API_TOKEN:
-    missing_env_vars.append("bot_token")
+    missing_vars.append('bot_token')
 if not API_ID:
-    missing_env_vars.append("api_id")
+    missing_vars.append('api_id')
 if not API_HASH:
-    missing_env_vars.append("api_hash")
-if not WEBHOOK_URL:
-    missing_env_vars.append("webhook_url")
+    missing_vars.append('api_hash')
 if not TELEGRAM_PHONE:
-    missing_env_vars.append("TELEGRAM_PHONE")
-if not ALLOWED_USER_ID:
-    missing_env_vars.append("ALLOWED_USER_ID")
+    missing_vars.append('TELEGRAM_PHONE')
+if not WEBHOOK_URL:
+    missing_vars.append('WEBHOOK_URL')
 
-if missing_env_vars:
-    logger.critical(f"Missing environment variables: {', '.join(missing_env_vars)}")
+if missing_vars:
+    logger.critical(f"Missing environment variables: {', '.join(missing_vars)}")
     raise ValueError("One or more environment variables are missing.")
 
 # Initialize Bot, Dispatcher, and Telethon client
@@ -65,15 +62,18 @@ async def handle_webhook(request):
 
 async def main():
     logger.info("Starting bot...")
+
     # Initialize the database
     init_db()
     logger.info("Database initialized.")
 
     # Start Telethon client
-    await client.start(phone=TELEGRAM_PHONE)
+    logger.info("Starting Telethon client...")
+    await client.start(phone=lambda: TELEGRAM_PHONE)
     logger.info("Telethon client started.")
 
     # Set webhook
+    logger.info(f"Setting webhook to {WEBHOOK_URL}...")
     await bot.set_webhook(WEBHOOK_URL)
     logger.info(f"Webhook set at {WEBHOOK_URL}.")
 
@@ -92,13 +92,15 @@ async def main():
 
     try:
         while True:
-            await asyncio.sleep(3600)
+            await asyncio.sleep(3600)  # Keep the bot running
     finally:
+        logger.info("Shutting down bot...")
         await bot.delete_webhook()
         logger.info("Webhook removed.")
         await client.disconnect()
+        logger.info("Telethon client disconnected.")
         await shutdown_scheduler()
-        logger.info("Bot stopped.")
+        logger.info("Scheduler shutdown completed.")
 
 if __name__ == "__main__":
     try:
