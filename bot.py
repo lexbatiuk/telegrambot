@@ -15,19 +15,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Telegram API credentials
-API_TOKEN = os.getenv('bot_token')
+# Load environment variables
+BOT_TOKEN = os.getenv('bot_token')
 API_ID = os.getenv('api_id')
 API_HASH = os.getenv('api_hash')
-WEBHOOK_URL = os.getenv('webhook_url')
-PORT = int(os.getenv('port', 3000))
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Match variable name from hosting
+PORT = int(os.getenv('PORT', 3000))  # Default to port 3000
 
-if not API_TOKEN or not API_ID or not API_HASH or not WEBHOOK_URL:
-    logger.critical("Environment variables `bot_token`, `api_id`, `api_hash`, or `webhook_url` are missing. Exiting.")
-    raise ValueError("Environment variables `bot_token`, `api_id`, `api_hash`, or `webhook_url` are missing.")
+# Validate environment variables
+if not BOT_TOKEN or not API_ID or not API_HASH or not WEBHOOK_URL:
+    logger.critical("Environment variables `bot_token`, `api_id`, `api_hash`, or `WEBHOOK_URL` are missing. Exiting.")
+    raise ValueError("Environment variables `bot_token`, `api_id`, `api_hash`, or `WEBHOOK_URL` are missing.")
 
 # Initialize Bot, Dispatcher, and Telethon client
-bot = Bot(token=API_TOKEN)
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 client = TelegramClient("user_session", API_ID, API_HASH)
 
@@ -48,6 +49,7 @@ async def handle_webhook(request):
 
 async def main():
     logger.info("Starting bot...")
+
     # Initialize the database
     init_db()
     logger.info("Database initialized.")
@@ -75,7 +77,7 @@ async def main():
 
     try:
         while True:
-            await asyncio.sleep(3600)
+            await asyncio.sleep(3600)  # Keep the bot running
     finally:
         await bot.delete_webhook()
         logger.info("Webhook removed.")
