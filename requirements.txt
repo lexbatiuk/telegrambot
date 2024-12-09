@@ -3,4 +3,4 @@ telethon>=1.24.0
 apscheduler
 aiohttp
 python-dotenv
-asyncpg>=0.27.0
+asyncpg
