@@ -31,10 +31,10 @@ async def fetch_messages_from_channels(user_channels):
                     all_messages.append(f"Channel: {channel}\n" + "\n\n".join(messages))
             except Exception as e:
                 logger.error(f"Error processing channel {channel}: {e}")
-                all_messages.append(f"Could not fetch messages from channel {channel}.")
+                all_messages.append(f"Failed to fetch messages from {channel}.")
         return all_messages
     except Exception as e:
-        logger.error(f"General error while fetching messages: {e}")
+        logger.error(f"Error fetching messages: {e}")
         return ["Failed to fetch messages."]
     finally:
         await client.disconnect()
@@ -55,7 +55,7 @@ def register_handlers(dp: Dispatcher):
     @dp.message(lambda message: message.text == "Add Channel")
     async def select_channel(message: types.Message):
         logger.info(f"User {message.from_user.id} selected 'Add Channel'.")
-        await message.answer("Enter the channel name or link (e.g., @news_channel).")
+        await message.answer("Please enter the channel name or link (e.g., @news_channel).")
 
     @dp.message(lambda message: message.text.startswith('@'))
     async def add_channel_handler(message: types.Message):
@@ -68,11 +68,11 @@ def register_handlers(dp: Dispatcher):
                 logger.info(f"Channel {channel} added for user {user_id}.")
                 await message.answer(f"Channel {channel} has been successfully added!")
             else:
-                logger.warning(f"Channel {channel} already exists for user {user_id}.")
-                await message.answer(f"Channel {channel} is already added.")
+                logger.warning(f"Channel {channel} is already added for user {user_id}.")
+                await message.answer(f"Channel {channel} is already in your list.")
         except Exception as e:
             logger.error(f"Error adding channel {channel}: {e}")
-            await message.answer(f"Could not add channel {channel}. Please check the name.")
+            await message.answer(f"Failed to add channel {channel}. Please check the name.")
         finally:
             await client.disconnect()
 
@@ -85,18 +85,18 @@ def register_handlers(dp: Dispatcher):
             channel_list = "\n".join(channels)
             await message.answer(f"Your channels:\n{channel_list}")
         else:
-            logger.info(f"User {user_id} has no added channels.")
-            await message.answer("You haven't added any channels yet.")
+            logger.info(f"User {user_id} has no channels added.")
+            await message.answer("You have no channels added yet.")
 
     @dp.message(lambda message: message.text == "Get Digest")
     async def get_digest(message: types.Message):
-        logger.info(f"User {message.from_user.id} requested a digest.")
+        logger.info(f"User {message.from_user.id} requested the digest.")
         user_id = message.from_user.id
         channels = get_user_channels(user_id)
 
         if not channels:
             logger.info(f"User {user_id} has no channels for the digest.")
-            await message.answer("You haven't added any channels yet. Add them via the menu.")
+            await message.answer("You have no channels added yet. Please add them using the menu.")
             return
 
         messages = await fetch_messages_from_channels(channels)
