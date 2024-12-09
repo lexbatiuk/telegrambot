@@ -1,26 +1,20 @@
+import logging
 from aiogram import Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
 from database import add_channel, get_user_channels
-from telethon import TelegramClient
-import logging
-import os
+from telethon.errors import RPCError
+from telethon.sync import TelegramClient
 
 logger = logging.getLogger(__name__)
 
-# Telegram API connection via environment variables
-API_ID = os.getenv("api_id")
-API_HASH = os.getenv("api_hash")
-BOT_TOKEN = os.getenv("bot_token")
-client = TelegramClient('bot_session', API_ID, API_HASH)
-
-async def fetch_messages_from_channels(user_channels):
+async def fetch_messages_from_channels(user_channels, client):
     """
-    Fetches the latest messages from all user channels.
+    Fetches the latest messages from all user channels using a user session.
     """
+    all_messages = []
     try:
-        await client.start(bot_token=BOT_TOKEN)
-        all_messages = []
+        await client.start()  # Start the user session
         for channel in user_channels:
             try:
                 messages = []
@@ -29,17 +23,17 @@ async def fetch_messages_from_channels(user_channels):
                         messages.append(f"📨 {message.text}")
                 if messages:
                     all_messages.append(f"Channel: {channel}\n" + "\n\n".join(messages))
-            except Exception as e:
+            except RPCError as e:
                 logger.error(f"Error processing channel {channel}: {e}")
-                all_messages.append(f"Failed to fetch messages from {channel}.")
-        return all_messages
+                all_messages.append(f"⚠️ Failed to fetch messages from {channel}.")
     except Exception as e:
-        logger.error(f"Error fetching messages: {e}")
-        return ["Failed to fetch messages."]
+        logger.error(f"Error initializing Telethon client: {e}")
+        all_messages.append("⚠️ An error occurred while fetching messages.")
     finally:
         await client.disconnect()
+    return all_messages
 
-def register_handlers(dp: Dispatcher):
+def register_handlers(dp: Dispatcher, client):
     @dp.message(Command("start"))
     async def send_welcome(message: types.Message):
         logger.info(f"User {message.from_user.id} sent /start.")
@@ -62,8 +56,8 @@ def register_handlers(dp: Dispatcher):
         user_id = message.from_user.id
         channel = message.text.strip()
         try:
-            await client.start(bot_token=BOT_TOKEN)
-            await client.get_entity(channel)
+            await client.start()  # Start the user session
+            await client.get_entity(channel)  # Validate channel
             if add_channel(user_id, channel):
                 logger.info(f"Channel {channel} added for user {user_id}.")
                 await message.answer(f"Channel {channel} has been successfully added!")
@@ -99,9 +93,9 @@ def register_handlers(dp: Dispatcher):
             await message.answer("You have no channels added yet. Please add them using the menu.")
             return
 
-        messages = await fetch_messages_from_channels(channels)
+        messages = await fetch_messages_from_channels(channels, client)
         if messages:
             for msg in messages:
                 await message.answer(msg)
         else:
-            await message.answer("Failed to fetch messages from your channels.")
+            await message.answer("No new messages found in your channels.")
