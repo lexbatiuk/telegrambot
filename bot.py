@@ -1,57 +1,72 @@
-import asyncio
 import logging
-import os
+import asyncio
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.types import Update
+from aiogram.fsm.storage.memory import MemoryStorage
 from handlers import router
 from database import init_db
 
-# Logging configuration
+# Настройка логирования
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Environment variables
+# Получение переменных окружения
+import os
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PORT = int(os.getenv("PORT", 3000))
+API_ID = os.getenv("API_ID")
+API_HASH = os.getenv("API_HASH")
+TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
+TELEGRAM_PASSWORD = os.getenv("TELEGRAM_PASSWORD")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Validate environment variables
-if not BOT_TOKEN or not WEBHOOK_URL:
-    raise ValueError("BOT_TOKEN and WEBHOOK_URL must be set in environment variables!")
+# Проверка переменных окружения
+required_vars = {
+    "BOT_TOKEN": BOT_TOKEN,
+    "WEBHOOK_URL": WEBHOOK_URL,
+    "API_ID": API_ID,
+    "API_HASH": API_HASH,
+    "TELEGRAM_PHONE": TELEGRAM_PHONE,
+    "DATABASE_URL": DATABASE_URL,
+}
+missing_vars = [key for key, value in required_vars.items() if not value]
+if missing_vars:
+    raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
 
-# Initialize bot and dispatcher
+# Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(storage=MemoryStorage())
+
+# Подключение обработчиков
 dp.include_router(router)
 
+# Обработчик вебхука
 async def handle_webhook(request):
-    """
-    Handles incoming webhook requests from Telegram.
-    """
     try:
         update = Update(**await request.json())
-        logger.info(f"Received update: {update}")
-        await dp.feed_update(bot=bot, update=update)
+        await dp.feed_update(bot, update)
         return web.Response(status=200)
     except Exception as e:
         logger.error(f"Error handling webhook: {e}")
         return web.Response(status=500)
 
+# Главная функция
 async def main():
-    """
-    Initializes the bot and starts the webhook server.
-    """
     logger.info("Starting bot...")
-    await init_db()
-    logger.info("Database initialized.")
 
+    # Инициализация базы данных
+    await init_db()
+    logger.info("Database initialized successfully.")
+
+    # Установка вебхука
     await bot.set_webhook(WEBHOOK_URL)
     logger.info(f"Webhook set at {WEBHOOK_URL}")
 
+    # Запуск aiohttp-сервера
     app = web.Application()
     app.router.add_post("/webhook", handle_webhook)
-
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
@@ -60,10 +75,10 @@ async def main():
 
     try:
         while True:
-            await asyncio.sleep(3600)
+            await asyncio.sleep(3600)  # Keep the bot running
     finally:
         await bot.delete_webhook()
-        logger.info("Webhook removed")
+        logger.info("Webhook removed.")
 
 if __name__ == "__main__":
     asyncio.run(main())
