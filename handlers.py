@@ -8,7 +8,7 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# Подключение к Telegram API через переменные окружения
+# Telegram API connection via environment variables
 API_ID = os.getenv("api_id")
 API_HASH = os.getenv("api_hash")
 BOT_TOKEN = os.getenv("bot_token")
@@ -16,7 +16,7 @@ client = TelegramClient('bot_session', API_ID, API_HASH)
 
 async def fetch_messages_from_channels(user_channels):
     """
-    Получает последние сообщения из всех каналов пользователя.
+    Fetches the latest messages from all user channels.
     """
     try:
         await client.start(bot_token=BOT_TOKEN)
@@ -24,38 +24,38 @@ async def fetch_messages_from_channels(user_channels):
         for channel in user_channels:
             try:
                 messages = []
-                async for message in client.iter_messages(channel, limit=5):  # 5 последних сообщений
+                async for message in client.iter_messages(channel, limit=5):  # Last 5 messages
                     if message.text:
                         messages.append(f"📨 {message.text}")
                 if messages:
-                    all_messages.append(f"Канал: {channel}\n" + "\n\n".join(messages))
+                    all_messages.append(f"Channel: {channel}\n" + "\n\n".join(messages))
             except Exception as e:
-                logger.error(f"Ошибка при обработке канала {channel}: {e}")
-                all_messages.append(f"Не удалось получить сообщения из канала {channel}.")
+                logger.error(f"Error processing channel {channel}: {e}")
+                all_messages.append(f"Could not fetch messages from channel {channel}.")
         return all_messages
     except Exception as e:
-        logger.error(f"Общая ошибка при получении сообщений: {e}")
-        return ["Не удалось получить сообщения."]
+        logger.error(f"General error while fetching messages: {e}")
+        return ["Failed to fetch messages."]
     finally:
         await client.disconnect()
 
 def register_handlers(dp: Dispatcher):
     @dp.message(Command("start"))
     async def send_welcome(message: types.Message):
-        logger.info(f"Пользователь {message.from_user.id} отправил /start.")
+        logger.info(f"User {message.from_user.id} sent /start.")
         keyboard = ReplyKeyboardMarkup(
             keyboard=[
-                [KeyboardButton(text="Добавить канал"), KeyboardButton(text="Мои каналы")],
-                [KeyboardButton(text="Получить дайджест")]
+                [KeyboardButton(text="Add Channel"), KeyboardButton(text="My Channels")],
+                [KeyboardButton(text="Get Digest")]
             ],
             resize_keyboard=True
         )
-        await message.answer("Привет! Используй меню для управления ботом.", reply_markup=keyboard)
+        await message.answer("Welcome! Use the menu to manage the bot.", reply_markup=keyboard)
 
-    @dp.message(lambda message: message.text == "Добавить канал")
+    @dp.message(lambda message: message.text == "Add Channel")
     async def select_channel(message: types.Message):
-        logger.info(f"Пользователь {message.from_user.id} выбрал 'Добавить канал'.")
-        await message.answer("Введите название канала или ссылку (например, @news_channel).")
+        logger.info(f"User {message.from_user.id} selected 'Add Channel'.")
+        await message.answer("Enter the channel name or link (e.g., @news_channel).")
 
     @dp.message(lambda message: message.text.startswith('@'))
     async def add_channel_handler(message: types.Message):
@@ -65,38 +65,38 @@ def register_handlers(dp: Dispatcher):
             await client.start(bot_token=BOT_TOKEN)
             await client.get_entity(channel)
             if add_channel(user_id, channel):
-                logger.info(f"Канал {channel} добавлен для пользователя {user_id}.")
-                await message.answer(f"Канал {channel} успешно добавлен!")
+                logger.info(f"Channel {channel} added for user {user_id}.")
+                await message.answer(f"Channel {channel} has been successfully added!")
             else:
-                logger.warning(f"Канал {channel} уже добавлен для пользователя {user_id}.")
-                await message.answer(f"Канал {channel} уже добавлен.")
+                logger.warning(f"Channel {channel} already exists for user {user_id}.")
+                await message.answer(f"Channel {channel} is already added.")
         except Exception as e:
-            logger.error(f"Ошибка при добавлении канала {channel}: {e}")
-            await message.answer(f"Не удалось добавить канал {channel}. Проверьте правильность имени.")
+            logger.error(f"Error adding channel {channel}: {e}")
+            await message.answer(f"Could not add channel {channel}. Please check the name.")
         finally:
             await client.disconnect()
 
-    @dp.message(lambda message: message.text == "Мои каналы")
+    @dp.message(lambda message: message.text == "My Channels")
     async def show_channels(message: types.Message):
         user_id = message.from_user.id
         channels = get_user_channels(user_id)
         if channels:
-            logger.info(f"Пользователь {user_id} запросил свои каналы.")
+            logger.info(f"User {user_id} requested their channels.")
             channel_list = "\n".join(channels)
-            await message.answer(f"Ваши каналы:\n{channel_list}")
+            await message.answer(f"Your channels:\n{channel_list}")
         else:
-            logger.info(f"У пользователя {user_id} нет добавленных каналов.")
-            await message.answer("У вас пока нет добавленных каналов.")
+            logger.info(f"User {user_id} has no added channels.")
+            await message.answer("You haven't added any channels yet.")
 
-    @dp.message(lambda message: message.text == "Получить дайджест")
+    @dp.message(lambda message: message.text == "Get Digest")
     async def get_digest(message: types.Message):
-        logger.info(f"Пользователь {message.from_user.id} запросил дайджест.")
+        logger.info(f"User {message.from_user.id} requested a digest.")
         user_id = message.from_user.id
         channels = get_user_channels(user_id)
 
         if not channels:
-            logger.info(f"У пользователя {user_id} нет каналов для получения дайджеста.")
-            await message.answer("У вас пока нет добавленных каналов. Добавьте их через меню.")
+            logger.info(f"User {user_id} has no channels for the digest.")
+            await message.answer("You haven't added any channels yet. Add them via the menu.")
             return
 
         messages = await fetch_messages_from_channels(channels)
@@ -104,4 +104,4 @@ def register_handlers(dp: Dispatcher):
             for msg in messages:
                 await message.answer(msg)
         else:
-            await message.answer("Не удалось получить сообщения из ваших каналов.")
+            await message.answer("Failed to fetch messages from your channels.")
