@@ -29,4 +29,10 @@ async def list_channels_command(message: types.Message):
     """
     Handles the /list_channels command to list user's channels.
     """
-    user_id = message.from_us
+    user_id = message.from_user.id
+    channels = await get_user_channels(user_id)
+    if not channels:
+        await message.reply("You have no channels added.")
+        return
+
+    await message.reply("Your channels:\n" + "\n".join(channels))
