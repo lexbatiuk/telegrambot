@@ -7,8 +7,8 @@ from aiogram.types import Update
 from aiogram.fsm.storage.memory import MemoryStorage
 from handlers import router
 from database import init_db
-from telethon.sync import TelegramClient
-from telethon.sessions import StringSession
+from telethon import TelegramClient
+from telethon.errors import SessionPasswordNeededError
 
 # Logging configuration
 logging.basicConfig(
@@ -19,12 +19,13 @@ logger = logging.getLogger(__name__)
 
 # Environment variables
 BOT_TOKEN = os.getenv("bot_token")
-API_ID = os.getenv("api_id")
+API_ID = int(os.getenv("api_id"))
 API_HASH = os.getenv("api_hash")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PORT = int(os.getenv("PORT", 3000))
 TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
 TELEGRAM_PASSWORD = os.getenv("TELEGRAM_PASSWORD")
+SESSION_PATH = "/data/telegram.session"
 
 # Verify environment variables
 required_vars = [BOT_TOKEN, API_ID, API_HASH, WEBHOOK_URL, TELEGRAM_PHONE]
@@ -36,7 +37,7 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
 # Telethon client
-client = TelegramClient(StringSession(), API_ID, API_HASH)
+client = TelegramClient(SESSION_PATH, API_ID, API_HASH)
 
 # Include router from handlers
 dp.include_router(router)
@@ -60,18 +61,20 @@ async def main():
     logger.info("Database initialized.")
 
     # Start Telethon client
-    async def code_callback():
-        logger.info("Waiting for the confirmation code...")
-        return input("Enter Telegram code: ").strip()
+    if not await client.connect():
+        logger.info("Connecting to Telegram...")
+        try:
+            if not await client.is_user_authorized():
+                await client.send_code_request(TELEGRAM_PHONE)
+                code = input("Enter the Telegram code: ").strip()
+                await client.sign_in(TELEGRAM_PHONE, code)
 
-    async def password_callback():
-        return TELEGRAM_PASSWORD
+                if await client.is_user_authorized() is False:
+                    logger.info("Two-factor authentication required.")
+                    await client.sign_in(password=TELEGRAM_PASSWORD)
+        except SessionPasswordNeededError:
+            logger.error("Two-factor authentication failed. Please check your password.")
 
-    await client.start(
-        phone=lambda: TELEGRAM_PHONE,
-        code_callback=code_callback,
-        password_callback=password_callback
-    )
     logger.info("Telethon client started.")
 
     # Set webhook
