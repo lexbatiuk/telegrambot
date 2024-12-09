@@ -5,27 +5,50 @@ from aiogram import Bot, Dispatcher
 from handlers import router
 from scheduler import setup_scheduler, shutdown_scheduler
 from database import init_db
-from telethon_client import start_telethon_client
-from config import Config
+from telethon.sync import TelegramClient
+import os
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("bot.log"),
+        logging.StreamHandler()
+    ],
 )
 logger = logging.getLogger(__name__)
 
-# Initialize Bot and Dispatcher
-bot = Bot(token=Config.BOT_TOKEN)
+# Environment variables
+API_TOKEN = os.getenv("bot_token")
+API_ID = os.getenv("api_id")
+API_HASH = os.getenv("api_hash")
+WEBHOOK_URL = os.getenv("webhook_url")
+PORT = int(os.getenv("port", 3000))
+TELEGRAM_PHONE = os.getenv("telegram_phone")
+
+# Check environment variables
+missing_vars = [var for var, value in {
+    "bot_token": API_TOKEN,
+    "api_id": API_ID,
+    "api_hash": API_HASH,
+    "webhook_url": WEBHOOK_URL,
+    "telegram_phone": TELEGRAM_PHONE
+}.items() if not value]
+
+if missing_vars:
+    logger.critical(f"Missing environment variables: {', '.join(missing_vars)}")
+    raise ValueError("One or more environment variables are missing.")
+
+# Initialize Bot, Dispatcher, and Telethon client
+bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
+client = TelegramClient("user_session", API_ID, API_HASH)
 
 # Register routes for the bot
 dp.include_router(router)
 
 async def handle_webhook(request):
-    """
-    Handles webhook requests from Telegram.
-    """
     try:
         update = await request.json()
         await dp.feed_update(bot=bot, update=update)
@@ -36,30 +59,25 @@ async def handle_webhook(request):
 
 async def main():
     logger.info("Starting bot...")
-    # Initialize the database
     init_db()
     logger.info("Database initialized.")
 
-    # Start Telethon client
-    await start_telethon_client()
+    await client.start(phone=lambda: TELEGRAM_PHONE)
     logger.info("Telethon client started.")
 
-    # Set webhook
-    await bot.set_webhook(Config.WEBHOOK_URL)
-    logger.info(f"Webhook set at {Config.WEBHOOK_URL}.")
+    await bot.set_webhook(WEBHOOK_URL)
+    logger.info(f"Webhook set at {WEBHOOK_URL}.")
 
-    # Setup scheduler
     setup_scheduler(bot)
     logger.info("Scheduler initialized.")
 
-    # Start aiohttp server
     app = web.Application()
     app.router.add_post('/webhook', handle_webhook)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=Config.PORT)
+    site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
     await site.start()
-    logger.info(f"Webhook server started on port {Config.PORT}.")
+    logger.info(f"Webhook server started on port {PORT}.")
 
     try:
         while True:
@@ -67,11 +85,14 @@ async def main():
     finally:
         await bot.delete_webhook()
         logger.info("Webhook removed.")
+        await client.disconnect()
         await shutdown_scheduler()
         logger.info("Bot stopped.")
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user.")
     except Exception as e:
-        logger.exception(f"Critical error: {e}")
+        logger.exception(f"Critical error occurred: {e}")
