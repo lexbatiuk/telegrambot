@@ -1,101 +1,52 @@
-import logging
-from telethon import TelegramClient
-from telethon.errors import SessionPasswordNeededError
-from aiogram import types, Dispatcher
+from aiogram import Dispatcher, types
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
+from database import add_channel, get_user_channels
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+def register_handlers(dp: Dispatcher, client):
+    @dp.message(Command("start"))
+    async def send_welcome(message: types.Message):
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="Add Channel"), KeyboardButton(text="My Channels")],
+                [KeyboardButton(text="Get Digest")],
+            ],
+            resize_keyboard=True
+        )
+        await message.answer("Welcome! Use the menu below to interact with the bot.", reply_markup=keyboard)
 
-user_clients = {}  # Store active user clients
+    @dp.message(lambda msg: msg.text == "Add Channel")
+    async def add_channel_prompt(message: types.Message):
+        await message.answer("Please send the channel username (e.g., @example_channel).")
 
-async def start_session(message: types.Message):
-    """
-    Start a session for a user.
-    """
-    await message.answer("Enter your Telegram API ID:")
-    user_clients[message.from_user.id] = {'stage': 'awaiting_api_id'}
-
-async def receive_api_id(message: types.Message):
-    """
-    Receive API ID and ask for API Hash.
-    """
-    user_clients[message.from_user.id]['api_id'] = message.text.strip()
-    user_clients[message.from_user.id]['stage'] = 'awaiting_api_hash'
-    await message.answer("Enter your Telegram API Hash:")
-
-async def receive_api_hash(message: types.Message):
-    """
-    Receive API Hash and ask for phone number.
-    """
-    user_clients[message.from_user.id]['api_hash'] = message.text.strip()
-    user_clients[message.from_user.id]['stage'] = 'awaiting_phone'
-    await message.answer("Enter your phone number (with country code):")
-
-async def receive_phone_number(message: types.Message):
-    """
-    Receive phone number and initiate session creation.
-    """
-    user_data = user_clients[message.from_user.id]
-    phone_number = message.text.strip()
-
-    api_id = int(user_data['api_id'])
-    api_hash = user_data['api_hash']
-    client = TelegramClient(f"sessions/{message.from_user.id}", api_id, api_hash)
-    
-    try:
-        await client.connect()
-        if not await client.is_user_authorized():
-            await client.send_code_request(phone_number)
-            user_clients[message.from_user.id].update({'client': client, 'phone': phone_number, 'stage': 'awaiting_code'})
-            await message.answer("Enter the code you received via Telegram:")
+    @dp.message(lambda msg: msg.text.startswith('@'))
+    async def add_channel_handler(message: types.Message):
+        user_id = message.from_user.id
+        channel = message.text.strip()
+        if add_channel(user_id, channel):
+            await message.answer(f"Channel {channel} added!")
         else:
-            user_clients[message.from_user.id]['client'] = client
-            await message.answer("Session started successfully!")
-    except Exception as e:
-        logger.error(f"Error during session setup: {e}")
-        await message.answer("An error occurred. Please try again later.")
+            await message.answer(f"Channel {channel} is already added.")
 
-async def receive_code(message: types.Message):
-    """
-    Receive authorization code and complete the session setup.
-    """
-    code = message.text.strip()
-    user_data = user_clients[message.from_user.id]
-    client = user_data['client']
-    phone = user_data['phone']
-    
-    try:
-        await client.sign_in(phone, code)
-        await message.answer("Session authorized successfully!")
-        user_clients[message.from_user.id]['stage'] = 'authorized'
-    except SessionPasswordNeededError:
-        user_clients[message.from_user.id]['stage'] = 'awaiting_password'
-        await message.answer("Two-step verification is enabled. Enter your password:")
-    except Exception as e:
-        logger.error(f"Error during sign-in: {e}")
-        await message.answer("An error occurred. Please try again later.")
+    @dp.message(lambda msg: msg.text == "My Channels")
+    async def list_channels(message: types.Message):
+        user_id = message.from_user.id
+        channels = get_user_channels(user_id)
+        if channels:
+            await message.answer("Your channels:\n" + "\n".join(channels))
+        else:
+            await message.answer("You haven't added any channels yet.")
 
-async def receive_password(message: types.Message):
-    """
-    Receive password for two-step verification.
-    """
-    password = message.text.strip()
-    user_data = user_clients[message.from_user.id]
-    client = user_data['client']
-    
-    try:
-        await client.sign_in(password=password)
-        await message.answer("Session authorized successfully!")
-        user_clients[message.from_user.id]['stage'] = 'authorized'
-    except Exception as e:
-        logger.error(f"Error during password authentication: {e}")
-        await message.answer("An error occurred. Please try again later.")
-
-def register_handlers(dp: Dispatcher):
-    dp.message.register(start_session, Command("start_session"))
-    dp.message.register(receive_api_id, lambda message: user_clients.get(message.from_user.id, {}).get('stage') == 'awaiting_api_id')
-    dp.message.register(receive_api_hash, lambda message: user_clients.get(message.from_user.id, {}).get('stage') == 'awaiting_api_hash')
-    dp.message.register(receive_phone_number, lambda message: user_clients.get(message.from_user.id, {}).get('stage') == 'awaiting_phone')
-    dp.message.register(receive_code, lambda message: user_clients.get(message.from_user.id, {}).get('stage') == 'awaiting_code')
-    dp.message.register(receive_password, lambda message: user_clients.get(message.from_user.id, {}).get('stage') == 'awaiting_password')
+    @dp.message(lambda msg: msg.text == "Get Digest")
+    async def get_digest(message: types.Message):
+        user_id = message.from_user.id
+        channels = get_user_channels(user_id)
+        if not channels:
+            await message.answer("You haven't added any channels yet.")
+            return
+        for channel in channels:
+            try:
+                async for msg in client.iter_messages(channel, limit=5):
+                    await message.answer(f"{channel}:\n{msg.text[:200]}...")
+            except Exception as e:
+                await message.answer(f"Error accessing {channel}: {e}")
