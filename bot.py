@@ -36,7 +36,7 @@ if missing_vars:
     raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
 
 # Инициализация бота и диспетчера
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
 dp = Dispatcher(storage=MemoryStorage())
 
 # Подключение обработчиков
@@ -76,6 +76,8 @@ async def main():
     try:
         while True:
             await asyncio.sleep(3600)  # Keep the bot running
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
     finally:
         await bot.delete_webhook()
         logger.info("Webhook removed.")
