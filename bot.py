@@ -1,10 +1,11 @@
 import asyncio
 import logging
 import os
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from telethon.sync import TelegramClient
-from telethon.sessions import StringSession
+from aiohttp import web
+from aiogram import Bot, Dispatcher
+from aiogram.types import Update
+from aiogram.fsm.storage.memory import MemoryStorage
+from handlers import router
 from database import init_db
 
 # Logging configuration
@@ -16,106 +17,64 @@ logger = logging.getLogger(__name__)
 
 # Environment variables
 BOT_TOKEN = os.getenv("bot_token")
-API_ID = os.getenv("api_id")
-API_HASH = os.getenv("api_hash")
-TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
-SESSION_STRING = os.getenv("TELEGRAM_SESSION", None)
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+PORT = int(os.getenv("PORT", 3000))
 
 # Verify environment variables
-required_vars = [BOT_TOKEN, API_ID, API_HASH, TELEGRAM_PHONE]
-missing_vars = [var for var in required_vars if not var]
+required_vars = [BOT_TOKEN, WEBHOOK_URL]
+missing_vars = [var for var, value in zip(["BOT_TOKEN", "WEBHOOK_URL"], [BOT_TOKEN, WEBHOOK_URL]) if not value]
 if missing_vars:
     raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
 
-# Bot and Dispatcher
+# Bot, Dispatcher, and Storage
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(storage=MemoryStorage())
+dp.include_router(router)
 
-# Telethon client
-client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-auth_state = {"waiting_for_code": False}
-
-
-# Command: Start
-@dp.message(F.text == "/start")
-async def start_command(message: types.Message):
+async def handle_webhook(request):
     """
-    Sends a welcome message with a button to request the code.
+    Handle incoming updates from Telegram via Webhook.
     """
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="Запросить код", callback_data="request_code")]]
-    )
-    await message.answer("Добро пожаловать! Нажмите кнопку ниже, чтобы запросить код авторизации.", reply_markup=keyboard)
-
-
-# Callback: Request Code
-@dp.callback_query(F.data == "request_code")
-async def request_code(callback_query: types.CallbackQuery):
-    """
-    Handles the 'Request Code' button press.
-    """
-    if auth_state["waiting_for_code"]:
-        await callback_query.message.edit_text("Уже был отправлен запрос на код. Пожалуйста, введите код.")
-        return
-
     try:
-        await client.connect()
-        if not await client.is_user_authorized():
-            await client.send_code_request(TELEGRAM_PHONE)
-            auth_state["waiting_for_code"] = True
-            await callback_query.message.edit_text(
-                "Код отправлен на ваш Telegram-аккаунт. Введите его с помощью команды `/auth_code <код>`."
-            )
-        else:
-            await callback_query.message.edit_text("Вы уже авторизованы.")
+        update = Update(**await request.json())
+        await dp.feed_update(bot, update)
+        return web.Response(status=200)
     except Exception as e:
-        logger.error(f"Ошибка при запросе кода: {e}")
-        await callback_query.message.edit_text(f"Ошибка при запросе кода: {e}")
-
-
-# Command: Enter Authorization Code
-@dp.message(F.text.startswith("/auth_code"))
-async def auth_code_command(message: types.Message):
-    """
-    Handles the /auth_code command to complete the login process.
-    """
-    code = message.text.removeprefix("/auth_code").strip()
-    if not code:
-        await message.reply("Введите корректный код в формате: `/auth_code <код>`")
-        return
-
-    if not auth_state["waiting_for_code"]:
-        await message.reply("Запрос на авторизацию не был отправлен. Нажмите кнопку 'Запросить код'.")
-        return
-
-    try:
-        await client.sign_in(TELEGRAM_PHONE, code)
-        session_string = client.session.save()
-        os.environ["TELEGRAM_SESSION"] = session_string
-        auth_state["waiting_for_code"] = False
-        logger.info("Авторизация прошла успешно, сессия сохранена.")
-        await message.reply("Авторизация прошла успешно!")
-    except Exception as e:
-        logger.error(f"Ошибка при авторизации: {e}")
-        await message.reply(f"Ошибка при авторизации: {e}")
-
+        logger.error(f"Error handling webhook: {e}")
+        return web.Response(status=500)
 
 async def main():
     """
-    Main function to initialize and run the bot.
+    Main function to initialize and run the bot with Webhook.
     """
     logger.info("Starting bot...")
+
+    # Delete old Webhook to avoid conflicts
+    await bot.delete_webhook(drop_pending_updates=True)
 
     # Initialize the database
     await init_db()
     logger.info("Database initialized successfully.")
 
-    try:
-        await dp.start_polling(bot)
-    finally:
-        await bot.session.close()
-        await client.disconnect()
+    # Set Webhook
+    await bot.set_webhook(url=WEBHOOK_URL)
+    logger.info(f"Webhook set at {WEBHOOK_URL}")
 
+    # Start aiohttp server to handle Webhook
+    app = web.Application()
+    app.router.add_post("/webhook", handle_webhook)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
+    await site.start()
+    logger.info(f"Webhook server started on port {PORT}")
+
+    try:
+        while True:
+            await asyncio.sleep(3600)  # Keep the bot running
+    finally:
+        await bot.delete_webhook()
+        logger.info("Bot stopped.")
 
 if __name__ == "__main__":
     asyncio.run(main())
