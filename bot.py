@@ -2,10 +2,10 @@ import logging
 import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiohttp import web
 from handlers import register_handlers
 from scheduler import setup_scheduler
 from database import init_db
-from aiohttp import web
 import os
 
 # Logging setup
@@ -30,9 +30,13 @@ async def handle_webhook(request):
     """
     Handles incoming updates from Telegram via the webhook.
     """
-    update = await request.json()
-    await dp.process_update(update)
-    return web.Response()
+    try:
+        update = await request.json()
+        await dp.feed_raw_update(bot=bot, update=update)  # Используем feed_raw_update для корректной обработки обновлений
+        return web.Response(text="OK")
+    except Exception as e:
+        logger.exception(f"Error handling webhook: {e}")
+        return web.Response(text="Error", status=500)
 
 async def main():
     logger.info("Starting bot...")
