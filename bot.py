@@ -21,8 +21,7 @@ API_ID = os.getenv("api_id")
 API_HASH = os.getenv("api_hash")
 WEBHOOK_URL = os.getenv("webhook_url")
 PORT = int(os.getenv("port", 3000))
-TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
-TELEGRAM_PASSWORD = os.getenv("TELEGRAM_PASSWORD")
+TELETHON_SESSION_STRING = os.getenv("TELETHON_SESSION_STRING")
 
 # Check environment variables
 missing_vars = [
@@ -32,7 +31,7 @@ missing_vars = [
         "api_id": API_ID,
         "api_hash": API_HASH,
         "webhook_url": WEBHOOK_URL,
-        "TELEGRAM_PHONE": TELEGRAM_PHONE,
+        "TELETHON_SESSION_STRING": TELETHON_SESSION_STRING,
     }.items()
     if not value
 ]
@@ -43,7 +42,7 @@ if missing_vars:
 # Initialize Bot, Dispatcher, and Telethon client
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
-client = TelegramClient("user_session", API_ID, API_HASH)
+client = TelegramClient(TELETHON_SESSION_STRING, API_ID, API_HASH)
 
 # Register routes for the bot
 dp.include_router(router)
@@ -67,23 +66,11 @@ async def main():
     logger.info("Database initialized.")
 
     # Start Telethon client
-    async def code_callback():
-        logger.info("Waiting for the confirmation code...")
-        raise NotImplementedError("Confirmation code retrieval not implemented.")
+    await client.connect()
+    if not await client.is_user_authorized():
+        logger.critical("Telethon session is not authorized. Please re-generate the session string.")
+        raise ValueError("Telethon session not authorized.")
 
-    async def password_callback():
-        if TELEGRAM_PASSWORD:
-            logger.info("Using password for two-factor authentication.")
-            return TELEGRAM_PASSWORD
-        else:
-            logger.critical("Password is required for two-factor authentication but is missing.")
-            raise ValueError("Missing TELEGRAM_PASSWORD for two-factor authentication.")
-
-    await client.start(
-        phone=lambda: TELEGRAM_PHONE,
-        code_callback=code_callback,
-        password_callback=password_callback,
-    )
     logger.info("Telethon client started.")
 
     # Set webhook
