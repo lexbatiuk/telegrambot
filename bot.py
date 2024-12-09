@@ -1,8 +1,7 @@
 import asyncio
 import logging
 import os
-from aiogram import Bot, Dispatcher, types
-from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from telethon.sync import TelegramClient
 from telethon.sessions import StringSession
@@ -30,7 +29,7 @@ if missing_vars:
 
 # Bot and Dispatcher
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(storage=MemoryStorage())
+dp = Dispatcher()
 
 # Telethon client
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
@@ -38,7 +37,7 @@ auth_state = {"waiting_for_code": False}
 
 
 # Command: Start
-@dp.message(commands=["start"])
+@dp.message(F.text == "/start")
 async def start_command(message: types.Message):
     """
     Sends a welcome message with a button to request the code.
@@ -50,7 +49,7 @@ async def start_command(message: types.Message):
 
 
 # Callback: Request Code
-@dp.callback_query(lambda c: c.data == "request_code")
+@dp.callback_query(F.data == "request_code")
 async def request_code(callback_query: types.CallbackQuery):
     """
     Handles the 'Request Code' button press.
@@ -75,7 +74,7 @@ async def request_code(callback_query: types.CallbackQuery):
 
 
 # Command: Enter Authorization Code
-@dp.message(commands=["auth_code"])
+@dp.message(F.text.startswith("/auth_code"))
 async def auth_code_command(message: types.Message):
     """
     Handles the /auth_code command to complete the login process.
