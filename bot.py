@@ -1,11 +1,11 @@
 import logging
 import asyncio
-from aiogram import Bot, Dispatcher, types
-from aiogram.webhook.aiohttp_server import setup_application
 from aiohttp import web
-from handlers import register_handlers
-from scheduler import setup_scheduler
+from aiogram import Bot, Dispatcher
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler
+from handlers import router  # Импортируем объект router
 from database import init_db
+from scheduler import setup_scheduler, shutdown_scheduler
 from telethon.sync import TelegramClient
 import os
 
@@ -16,71 +16,72 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Load environment variables
-API_TOKEN = os.getenv('bot_token')
-API_ID = os.getenv('api_id')
-API_HASH = os.getenv('api_hash')
-WEBHOOK_URL = os.getenv('webhook_url')
-WEBHOOK_PATH = "/webhook"
+# Telegram API credentials
+API_TOKEN = os.getenv("bot_token")
+API_ID = os.getenv("api_id")
+API_HASH = os.getenv("api_hash")
+WEBHOOK_URL = os.getenv("webhook_url")
+WEBAPP_HOST = "0.0.0.0"
+WEBAPP_PORT = int(os.getenv("PORT", 3000))
 
 if not API_TOKEN or not API_ID or not API_HASH or not WEBHOOK_URL:
-    logger.critical("Environment variables `bot_token`, `api_id`, `api_hash`, or `webhook_url` are missing. Exiting.")
-    raise ValueError("Environment variables are missing.")
+    logger.critical(
+        "Environment variables `bot_token`, `api_id`, `api_hash`, or `webhook_url` are missing. Exiting."
+    )
+    raise ValueError(
+        "Environment variables `bot_token`, `api_id`, `api_hash`, or `webhook_url` are missing."
+    )
 
-# Initialize Bot and Dispatcher
+# Initialize bot, dispatcher, and Telethon client
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
+dp.include_router(router)  # Подключаем router
+client = TelegramClient("user_session", API_ID, API_HASH)
 
-# Initialize Telethon client
-client = TelegramClient('user_session', API_ID, API_HASH)
 
-async def handle_webhook(request):
+async def handle_webhook(request: web.Request) -> web.Response:
     """
-    Handles incoming Telegram updates via webhook.
+    Handle incoming updates from Telegram via webhook.
     """
     try:
         update = await request.json()
-        await dp.feed_update(bot=bot, update=types.Update(**update))
+        await dp.feed_update(bot, update)
         return web.Response(status=200)
     except Exception as e:
-        logger.error(f"Error handling webhook: {e}")
+        logger.exception(f"Error handling webhook: {e}")
         return web.Response(status=500)
 
-async def main():
-    logger.info("Starting bot...")
 
-    # Initialize database
+async def main():
+    """
+    Main function to start the bot.
+    """
+    logger.info("Starting bot...")
     init_db()
     logger.info("Database initialized.")
 
-    # Register handlers
-    register_handlers(dp, client)
-    logger.info("Handlers registered.")
-
-    # Setup scheduler
     setup_scheduler(bot)
-    logger.info("Scheduler initialized.")
-
-    # Start Telethon client
-    await client.start()
-    logger.info("Telethon client started.")
-
-    # Create webhook server
-    app = web.Application()
-    app.router.add_post(WEBHOOK_PATH, handle_webhook)
+    logger.info("Scheduler started.")
 
     # Configure webhook
-    await bot.set_webhook(url=f"{WEBHOOK_URL}{WEBHOOK_PATH}")
-    logger.info(f"Webhook set to {WEBHOOK_URL}{WEBHOOK_PATH}")
-
+    await bot.set_webhook(WEBHOOK_URL)
+    app = web.Application()
+    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, port=3000)
+    site = web.TCPSite(runner, WEBAPP_HOST, WEBAPP_PORT)
     await site.start()
 
-    logger.info("Webhook server started. Listening on port 3000.")
-    while True:
-        await asyncio.sleep(3600)
+    logger.info("Bot is up and running!")
+    try:
+        await client.start()
+        logger.info("Telethon client started.")
+        await asyncio.Event().wait()  # Keep running until interrupted
+    finally:
+        await client.disconnect()
+        await bot.delete_webhook()
+        await shutdown_scheduler()
+
 
 if __name__ == "__main__":
     try:
