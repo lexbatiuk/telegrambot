@@ -22,6 +22,7 @@ API_HASH = os.getenv("api_hash")
 WEBHOOK_URL = os.getenv("webhook_url")
 PORT = int(os.getenv("port", 3000))
 TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
+TELEGRAM_CODE = os.getenv("TELEGRAM_CODE")
 TELEGRAM_PASSWORD = os.getenv("TELEGRAM_PASSWORD")
 
 # Check environment variables
@@ -33,6 +34,7 @@ missing_vars = [
         "api_hash": API_HASH,
         "webhook_url": WEBHOOK_URL,
         "TELEGRAM_PHONE": TELEGRAM_PHONE,
+        "TELEGRAM_CODE": TELEGRAM_CODE,
     }.items()
     if not value
 ]
@@ -40,13 +42,14 @@ if missing_vars:
     logger.critical(f"Missing environment variables: {', '.join(missing_vars)}")
     raise ValueError("One or more environment variables are missing.")
 
-# Initialize Bot and Dispatcher
+# Initialize Bot, Dispatcher, and Telethon client
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
-client = TelegramClient("/data/user_session", API_ID, API_HASH)
+client = TelegramClient("user_session", API_ID, API_HASH)
 
 # Register routes for the bot
 dp.include_router(router)
+
 
 async def handle_webhook(request):
     """
@@ -60,19 +63,19 @@ async def handle_webhook(request):
         logger.error(f"Error handling webhook: {e}")
         return web.Response(status=500)
 
+
 async def main():
     logger.info("Starting bot...")
     # Initialize the database
     await init_db()
+    logger.info("Database initialized.")
 
     # Start Telethon client
-    async def code_callback():
-        return input("Enter the confirmation code: ")
-
-    async def password_callback():
-        return TELEGRAM_PASSWORD
-
-    await client.start(phone=lambda: TELEGRAM_PHONE, password=password_callback)
+    await client.start(
+        phone=lambda: TELEGRAM_PHONE,
+        code_callback=lambda: TELEGRAM_CODE,
+        password=lambda: TELEGRAM_PASSWORD,
+    )
     logger.info("Telethon client started.")
 
     # Set webhook
@@ -81,10 +84,11 @@ async def main():
 
     # Setup scheduler
     setup_scheduler(bot)
+    logger.info("Scheduler initialized.")
 
     # Start aiohttp server
     app = web.Application()
-    app.router.add_post('/webhook', handle_webhook)
+    app.router.add_post("/webhook", handle_webhook)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
@@ -100,6 +104,7 @@ async def main():
         await client.disconnect()
         await shutdown_scheduler()
         logger.info("Bot stopped.")
+
 
 if __name__ == "__main__":
     try:
