@@ -61,6 +61,16 @@ async def main():
     logger.info(f"Running app on http://0.0.0.0:{PORT}")
     await site.start()
 
+    # Keep the application running
+    try:
+        while True:
+            await asyncio.sleep(3600)  # Keep alive
+    finally:
+        logger.info("Shutting down...")
+        await bot.session.close()  # Ensure aiohttp session is closed
+        await runner.cleanup()
+        logger.info("Shutdown complete.")
+
 if __name__ == "__main__":
     try:
         asyncio.run(main())
