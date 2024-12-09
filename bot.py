@@ -1,82 +1,86 @@
 import logging
 import asyncio
-from aiogram import Bot, Dispatcher
 from aiohttp import web
+from aiogram import Bot, Dispatcher
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from handlers import register_handlers
-from scheduler import setup_scheduler
+from scheduler import setup_scheduler, shutdown_scheduler
 from database import init_db
 from telethon.sync import TelegramClient
 import os
 
-# Configure logging
+# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# Telegram API credentials
+# Чтение переменных окружения
 API_TOKEN = os.getenv('bot_token')
 API_ID = os.getenv('api_id')
 API_HASH = os.getenv('api_hash')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-WEBHOOK_PATH = "/webhook"  # Path for webhook
+WEBHOOK_PATH = os.getenv('WEBHOOK_PATH', '/webhook')  # Путь вебхука по умолчанию
 
 if not API_TOKEN or not API_ID or not API_HASH or not WEBHOOK_URL:
-    logger.critical("Environment variables `bot_token`, `api_id`, `api_hash`, or `WEBHOOK_URL` are missing. Exiting.")
-    raise ValueError("Environment variables `bot_token`, `api_id`, `api_hash`, or `WEBHOOK_URL` are missing.")
+    logger.critical("Отсутствуют необходимые переменные окружения.")
+    raise ValueError("Переменные окружения `bot_token`, `api_id`, `api_hash`, или `WEBHOOK_URL` отсутствуют.")
 
-# Initialize Bot and Dispatcher
+# Инициализация бота, диспетчера и Telethon клиента
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
-
-# Initialize Telethon client
 client = TelegramClient('user_session', API_ID, API_HASH)
 
-
 async def on_startup(app: web.Application):
-    """Callback to handle app startup."""
-    await bot.set_webhook(f"{WEBHOOK_URL}{WEBHOOK_PATH}")
-    logger.info(f"Webhook set to {WEBHOOK_URL}{WEBHOOK_PATH}")
+    """
+    Callback на старте приложения.
+    """
+    logger.info("Запуск бота...")
+    init_db()
+    logger.info("База данных инициализирована.")
 
+    # Регистрация обработчиков
+    register_handlers(dp, client)
+    logger.info("Обработчики зарегистрированы.")
+
+    # Настройка планировщика задач
+    setup_scheduler(bot)
+    logger.info("Планировщик задач запущен.")
+
+    # Установка вебхука
+    await bot.set_webhook(WEBHOOK_URL + WEBHOOK_PATH)
+    logger.info(f"Webhook установлен на {WEBHOOK_URL + WEBHOOK_PATH}")
 
 async def on_shutdown(app: web.Application):
-    """Callback to handle app shutdown."""
-    await bot.session.close()
-    await client.disconnect()
-    logger.info("Bot session and Telethon client closed.")
-    logger.info("Shutdown completed.")
+    """
+    Callback при завершении работы приложения.
+    """
+    logger.info("Завершаем работу...")
+    await shutdown_scheduler()  # Завершение планировщика
+    await bot.session.close()  # Завершение сессии бота
+    await client.disconnect()  # Отключение Telethon клиента
+    logger.info("Все подключения завершены.")
 
-
-async def main():
-    logger.info("Starting bot...")
-    init_db()
-    logger.info("Database initialized.")
-
-    register_handlers(dp, client)
-    logger.info("Handlers registered.")
-
-    setup_scheduler(bot)
-    logger.info("Scheduler initialized.")
-
-    # Create webhook server
+def main():
+    """
+    Основная точка входа.
+    """
     app = web.Application()
-    app.router.add_post(WEBHOOK_PATH, dp.as_handler())
+
+    # Установка обработчиков для вебхука
+    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
+    setup_application(app, dp, bot=bot)
+
+    # Регистрация callbacks
     app.on_startup.append(on_startup)
     app.on_shutdown.append(on_shutdown)
 
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=8443)  # Use port 8443 for Telegram webhook
-    logger.info("Starting webhook server...")
-    await site.start()
-
-    logger.info("Bot is running. Waiting for updates...")
-    await asyncio.Event().wait()  # Keep running until interrupted
-
+    # Запуск приложения
+    web.run_app(app, host='0.0.0.0', port=int(os.getenv('PORT', 3000)))
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        main()
     except Exception as e:
-        logger.exception(f"Critical error: {e}")
+        logger.exception(f"Критическая ошибка: {e}")
