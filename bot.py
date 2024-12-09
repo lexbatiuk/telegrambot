@@ -6,6 +6,7 @@ from handlers import router
 from scheduler import setup_scheduler, shutdown_scheduler
 from database import init_db
 from telethon.sync import TelegramClient
+from telethon.sessions import StringSession
 import os
 
 # Configure logging
@@ -15,24 +16,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Load environment variables
+# Environment variables
 API_TOKEN = os.getenv("bot_token")
 API_ID = os.getenv("api_id")
 API_HASH = os.getenv("api_hash")
 WEBHOOK_URL = os.getenv("webhook_url")
 PORT = int(os.getenv("port", 3000))
-TELEGRAM_PHONE = os.getenv("telegram_phone")
+TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
 
-# Log loaded variables
-logger.info("Loaded environment variables:")
-logger.info(f"bot_token loaded: {bool(API_TOKEN)}")
-logger.info(f"api_id loaded: {bool(API_ID)}")
-logger.info(f"api_hash loaded: {bool(API_HASH)}")
-logger.info(f"webhook_url: {WEBHOOK_URL}")
-logger.info(f"port: {PORT}")
-logger.info(f"telegram_phone loaded: {bool(TELEGRAM_PHONE)}")
-
-# Validate variables
+# Check environment variables
 missing_vars = [
     var
     for var, value in {
@@ -40,7 +32,7 @@ missing_vars = [
         "api_id": API_ID,
         "api_hash": API_HASH,
         "webhook_url": WEBHOOK_URL,
-        "telegram_phone": TELEGRAM_PHONE,
+        "TELEGRAM_PHONE": TELEGRAM_PHONE,
     }.items()
     if not value
 ]
@@ -48,16 +40,18 @@ if missing_vars:
     logger.critical(f"Missing environment variables: {', '.join(missing_vars)}")
     raise ValueError("One or more environment variables are missing.")
 
-# Initialize bot and client
+# Initialize Bot, Dispatcher, and Telethon client
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 client = TelegramClient("user_session", API_ID, API_HASH)
 
-# Register handlers
+# Register routes for the bot
 dp.include_router(router)
 
-# Webhook handler
 async def handle_webhook(request):
+    """
+    Handles webhook requests from Telegram.
+    """
     try:
         update = await request.json()
         await dp.feed_update(bot=bot, update=update)
@@ -66,14 +60,25 @@ async def handle_webhook(request):
         logger.error(f"Error handling webhook: {e}")
         return web.Response(status=500)
 
-# Main function
 async def main():
     logger.info("Starting bot...")
+    # Initialize the database
     init_db()
     logger.info("Database initialized.")
 
     # Start Telethon client
-    await client.start(phone=lambda: TELEGRAM_PHONE)
+    async def code_callback():
+        logger.info("Waiting for the confirmation code...")
+        return input("Enter the code you received: ")
+
+    async def password_callback():
+        logger.info("No password set, skipping...")
+        return None  # Assuming no two-factor password is set
+
+    await client.start(
+        phone=lambda: TELEGRAM_PHONE,
+        code_callback=code_callback,
+    )
     logger.info("Telethon client started.")
 
     # Set webhook
