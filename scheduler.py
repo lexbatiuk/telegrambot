@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 async def clean_inactive_users(bot):
     """
-    Проверяет пользователей на активность и удаляет данные неактивных пользователей.
+    Checks for inactive users and deletes their data.
     """
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
@@ -18,18 +18,18 @@ async def clean_inactive_users(bot):
 
         for user_id, in users:
             try:
-                await bot.send_message(user_id, "Проверка активности...")
+                await bot.send_message(user_id, "Checking activity...")
             except (TelegramForbiddenError, TelegramBadRequest):
                 delete_user_data(user_id)
-                logger.info(f"Пользователь {user_id} больше не активен. Данные удалены.")
+                logger.info(f"User {user_id} is no longer active. Data removed.")
     finally:
         conn.close()
 
 def setup_scheduler(bot):
     """
-    Настройка планировщика задач.
+    Sets up the task scheduler.
     """
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(clean_inactive_users, "interval", hours=24, args=[bot])  # Запускать раз в 24 часа
+    scheduler.add_job(clean_inactive_users, "interval", hours=24, args=[bot])  # Runs every 24 hours
     scheduler.start()
-    logger.info("Планировщик задач запущен.")
+    logger.info("Task scheduler started.")
