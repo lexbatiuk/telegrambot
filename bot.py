@@ -6,6 +6,7 @@ from handlers import router
 from scheduler import setup_scheduler, shutdown_scheduler
 from database import init_db
 from telethon.sync import TelegramClient
+from telethon.sessions import StringSession
 import os
 
 # Configure logging
@@ -19,9 +20,11 @@ logger = logging.getLogger(__name__)
 API_TOKEN = os.getenv("bot_token")
 API_ID = os.getenv("api_id")
 API_HASH = os.getenv("api_hash")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Updated to ensure correct naming
-PORT = int(os.getenv("PORT", 3000))  # Defaults to 3000 if not set
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+PORT = int(os.getenv("PORT", 3000))
 TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
+TELEGRAM_CODE = os.getenv("TELEGRAM_CODE")
+TELEGRAM_PASSWORD = os.getenv("TELEGRAM_PASSWORD")
 
 # Check environment variables
 missing_vars = [
@@ -59,6 +62,26 @@ async def handle_webhook(request):
         logger.error(f"Error handling webhook: {e}")
         return web.Response(status=500)
 
+async def code_callback():
+    """
+    Returns the confirmation code for login.
+    """
+    code = TELEGRAM_CODE
+    if not code:
+        raise ValueError("TELEGRAM_CODE is missing. Add it to Shared Variables.")
+    logger.info(f"Using confirmation code: {code}")
+    return code
+
+async def password_callback():
+    """
+    Returns the password for two-factor authentication.
+    """
+    password = TELEGRAM_PASSWORD
+    if not password:
+        raise ValueError("TELEGRAM_PASSWORD is missing. Add it to Shared Variables.")
+    logger.info("Using two-factor authentication password.")
+    return password
+
 async def main():
     logger.info("Starting bot...")
     # Initialize the database
@@ -66,12 +89,11 @@ async def main():
     logger.info("Database initialized.")
 
     # Start Telethon client
-    async def code_callback():
-        logger.info("Waiting for the confirmation code...")
-        # Implement a method to retrieve or set the confirmation code
-        raise NotImplementedError("Confirmation code retrieval not implemented.")
-
-    await client.start(phone=lambda: TELEGRAM_PHONE, code_callback=code_callback)
+    await client.start(
+        phone=lambda: TELEGRAM_PHONE,
+        code_callback=code_callback,
+        password_callback=password_callback,
+    )
     logger.info("Telethon client started.")
 
     # Set webhook
