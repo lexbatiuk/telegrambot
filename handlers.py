@@ -2,11 +2,12 @@ from aiogram import Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
 from database import add_channel, get_user_channels
+import os
 
-# Список разрешенных пользователей
-ALLOWED_USERS = [323173216]  # Замени your_telegram_id на свой Telegram ID
+# Получаем список разрешенных пользователей из переменной окружения
+ALLOWED_USERS = [int(os.getenv('ALLOWED_USER_ID'))]
 
-def register_handlers(dp: Dispatcher):
+def register_handlers(dp: Dispatcher, client):
     # Проверка доступа
     @dp.message()
     async def check_access(message: types.Message):
