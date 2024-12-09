@@ -1,77 +1,44 @@
 import asyncpg
 import os
-import logging
 
-logger = logging.getLogger(__name__)
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 
 async def init_db():
     """
-    Initialize the PostgreSQL database and create tables if they don't exist.
+    Initializes the database and creates required tables if they do not exist.
     """
-    conn = await asyncpg.connect(
-        user=os.getenv("PGUSER"),
-        password=os.getenv("PGPASSWORD"),
-        database=os.getenv("PGDATABASE"),
-        host=os.getenv("PGHOST"),
-        port=os.getenv("PGPORT"),
-    )
-    await conn.execute('''
-        CREATE TABLE IF NOT EXISTS user_channels (
-            user_id BIGINT PRIMARY KEY,
-            channels TEXT[]
-        )
-    ''')
-    await conn.close()
-    logger.info("Database initialized.")
+    create_table_query = """
+    CREATE TABLE IF NOT EXISTS user_channels (
+        user_id BIGINT NOT NULL,
+        channel_id TEXT NOT NULL,
+        PRIMARY KEY (user_id, channel_id)
+    );
+    """
+    async with asyncpg.create_pool(DATABASE_URL) as pool:
+        async with pool.acquire() as connection:
+            await connection.execute(create_table_query)
 
-async def add_channel(user_id, channel):
-    """
-    Add a channel to the user's list of channels.
-    """
-    conn = await asyncpg.connect(
-        user=os.getenv("PGUSER"),
-        password=os.getenv("PGPASSWORD"),
-        database=os.getenv("PGDATABASE"),
-        host=os.getenv("PGHOST"),
-        port=os.getenv("PGPORT"),
-    )
-    await conn.execute('''
-        INSERT INTO user_channels (user_id, channels)
-        VALUES ($1, ARRAY[$2])
-        ON CONFLICT (user_id) DO UPDATE
-        SET channels = array_append(user_channels.channels, $2)
-    ''', user_id, channel)
-    await conn.close()
 
-async def get_channels(user_id):
+async def add_channel(user_id: int, channel_id: str):
     """
-    Get the list of channels for a user.
+    Adds a channel to the database for a specific user.
     """
-    conn = await asyncpg.connect(
-        user=os.getenv("PGUSER"),
-        password=os.getenv("PGPASSWORD"),
-        database=os.getenv("PGDATABASE"),
-        host=os.getenv("PGHOST"),
-        port=os.getenv("PGPORT"),
-    )
-    result = await conn.fetchval('''
-        SELECT channels FROM user_channels WHERE user_id = $1
-    ''', user_id)
-    await conn.close()
-    return result or []
+    query = """
+    INSERT INTO user_channels (user_id, channel_id)
+    VALUES ($1, $2)
+    ON CONFLICT (user_id, channel_id) DO NOTHING;
+    """
+    async with asyncpg.create_pool(DATABASE_URL) as pool:
+        async with pool.acquire() as connection:
+            await connection.execute(query, user_id, channel_id)
 
-async def delete_user_data(user_id):
+
+async def get_user_channels(user_id: int):
     """
-    Delete all data for a user.
+    Retrieves the list of channels for a specific user.
     """
-    conn = await asyncpg.connect(
-        user=os.getenv("PGUSER"),
-        password=os.getenv("PGPASSWORD"),
-        database=os.getenv("PGDATABASE"),
-        host=os.getenv("PGHOST"),
-        port=os.getenv("PGPORT"),
-    )
-    await conn.execute('''
-        DELETE FROM user_channels WHERE user_id = $1
-    ''', user_id)
-    await conn.close()
+    query = "SELECT channel_id FROM user_channels WHERE user_id = $1;"
+    async with asyncpg.create_pool(DATABASE_URL) as pool:
+        async with pool.acquire() as connection:
+            return await connection.fetch(query, user_id)
