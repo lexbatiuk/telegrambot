@@ -9,7 +9,13 @@ async def send_welcome(message: types.Message):
     """
     Обработчик команды /start.
     """
-    await message.answer("Welcome! Use the menu to interact with the bot.")
+    keyboard = types.ReplyKeyboardMarkup(
+        keyboard=[
+            [types.KeyboardButton(text="Add Channel"), types.KeyboardButton(text="My Channels")]
+        ],
+        resize_keyboard=True
+    )
+    await message.answer("Welcome! Use the menu to interact with the bot.", reply_markup=keyboard)
 
 @router.message(lambda message: message.text == "Add Channel")
 async def select_channel(message: types.Message):
