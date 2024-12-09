@@ -1,12 +1,12 @@
 import logging
 import asyncio
+import os
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from handlers import register_handlers
 from scheduler import setup_scheduler
 from database import init_db
 from telethon.sync import TelegramClient
-import os
 
 # Configure logging
 logging.basicConfig(
@@ -19,55 +19,35 @@ logger = logging.getLogger(__name__)
 API_TOKEN = os.getenv('bot_token')
 API_ID = os.getenv('api_id')
 API_HASH = os.getenv('api_hash')
-WEBHOOK_URL = os.getenv('webhook_url')
-PORT = int(os.getenv('port', 3000))
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Full URL for webhook (e.g., "https://your-domain.com/webhook")
+PORT = int(os.getenv('PORT', 3000))  # Default port is 3000
 
 if not API_TOKEN or not API_ID or not API_HASH or not WEBHOOK_URL:
-    logger.critical("Environment variables `bot_token`, `api_id`, `api_hash`, or `webhook_url` are missing. Exiting.")
-    raise ValueError("Environment variables `bot_token`, `api_id`, `api_hash`, or `webhook_url` are missing.")
+    logger.critical("Environment variables `bot_token`, `api_id`, `api_hash`, or `WEBHOOK_URL` are missing. Exiting.")
+    raise ValueError("Environment variables `bot_token`, `api_id`, `api_hash`, or `WEBHOOK_URL` are missing.")
 
-# Initialize Bot and Dispatcher
+# Initialize bot and dispatcher
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 # Initialize Telethon client
 client = TelegramClient('user_session', API_ID, API_HASH)
 
-# Ensure the webhook is correctly set up
-async def ensure_webhook():
-    """
-    Checks and sets the webhook if needed.
-    """
-    try:
-        webhook_info = await bot.get_webhook_info()
-        if webhook_info.url != WEBHOOK_URL:
-            await bot.set_webhook(WEBHOOK_URL)
-            logger.info("Webhook re-registered successfully.")
-        else:
-            logger.info("Webhook is already set correctly.")
-    except Exception as e:
-        logger.exception(f"Error ensuring webhook: {e}")
+# Create aiohttp app
+app = web.Application()
 
-# Webhook handler
 async def handle_webhook(request):
-    """
-    Handles incoming updates from Telegram via the webhook.
-    """
+    """Handles incoming updates from Telegram via webhook."""
     try:
         update = await request.json()
         await dp.feed_raw_update(bot=bot, update=update)
         return web.Response(text="OK")
-    except ConnectionResetError as e:
-        logger.warning(f"Connection lost: {e}")
-        return web.Response(text="Connection lost", status=500)
     except Exception as e:
-        logger.exception(f"Error handling webhook: {e}")
+        logger.error(f"Error handling webhook: {e}")
         return web.Response(text="Error", status=500)
 
-# Main function
 async def main():
     logger.info("Starting bot...")
-    # Initialize database
     init_db()
     logger.info("Database initialized.")
 
@@ -79,29 +59,27 @@ async def main():
     setup_scheduler(bot)
     logger.info("Scheduler initialized.")
 
-    # Ensure webhook is set
-    await ensure_webhook()
+    # Set webhook
+    await bot.set_webhook(url=WEBHOOK_URL)
+    logger.info(f"Webhook set to {WEBHOOK_URL}")
 
-    # Create aiohttp web app
-    app = web.Application()
+    # Configure aiohttp routes
     app.router.add_post("/webhook", handle_webhook)
 
-    # Run web app
+    # Start aiohttp server
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
+    logger.info(f"Webhook server started on port {PORT}")
     await site.start()
-    logger.info(f"Bot is running on port {PORT} with webhook URL: {WEBHOOK_URL}")
 
-    # Keep the application running
     try:
         while True:
-            await asyncio.sleep(3600)  # Sleep to keep the loop alive
+            await asyncio.sleep(3600)  # Keep the server running
     except (KeyboardInterrupt, SystemExit):
-        logger.info("Shutting down bot...")
-        await bot.session.close()
-        await client.disconnect()
+        logger.info("Shutting down...")
         await runner.cleanup()
+        await bot.delete_webhook()
 
 if __name__ == "__main__":
     try:
