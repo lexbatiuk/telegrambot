@@ -6,6 +6,7 @@ from handlers import router
 from scheduler import setup_scheduler, shutdown_scheduler
 from database import init_db
 from telethon.sync import TelegramClient
+from telethon.sessions import StringSession
 import os
 
 # Configure logging
@@ -15,27 +16,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Telegram API credentials
-API_TOKEN = os.getenv('bot_token')
-API_ID = os.getenv('api_id')
-API_HASH = os.getenv('api_hash')
-TELEGRAM_PHONE = os.getenv('TELEGRAM_PHONE')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-PORT = int(os.getenv('PORT', 3000))
+# Environment variables
+API_TOKEN = os.getenv("bot_token")
+API_ID = os.getenv("api_id")
+API_HASH = os.getenv("api_hash")
+WEBHOOK_URL = os.getenv("webhook_url")
+PORT = int(os.getenv("port", 3000))
+TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
 
-# Validate environment variables
-missing_vars = []
-if not API_TOKEN:
-    missing_vars.append('bot_token')
-if not API_ID:
-    missing_vars.append('api_id')
-if not API_HASH:
-    missing_vars.append('api_hash')
-if not TELEGRAM_PHONE:
-    missing_vars.append('TELEGRAM_PHONE')
-if not WEBHOOK_URL:
-    missing_vars.append('WEBHOOK_URL')
-
+# Check environment variables
+missing_vars = [
+    var
+    for var, value in {
+        "bot_token": API_TOKEN,
+        "api_id": API_ID,
+        "api_hash": API_HASH,
+        "webhook_url": WEBHOOK_URL,
+        "TELEGRAM_PHONE": TELEGRAM_PHONE,
+    }.items()
+    if not value
+]
 if missing_vars:
     logger.critical(f"Missing environment variables: {', '.join(missing_vars)}")
     raise ValueError("One or more environment variables are missing.")
@@ -62,18 +62,27 @@ async def handle_webhook(request):
 
 async def main():
     logger.info("Starting bot...")
-
     # Initialize the database
     init_db()
     logger.info("Database initialized.")
 
     # Start Telethon client
-    logger.info("Starting Telethon client...")
-    await client.start(phone=lambda: TELEGRAM_PHONE)
+    async def code_callback():
+        logger.info("Waiting for the confirmation code...")
+        return TELEGRAM_PHONE  # Automatically use phone number
+
+    async def password_callback():
+        logger.info("No password set, skipping...")
+        return None  # Assuming no two-factor password is set
+
+    await client.start(
+        phone=lambda: TELEGRAM_PHONE,
+        code_callback=code_callback,
+        password_callback=password_callback,
+    )
     logger.info("Telethon client started.")
 
     # Set webhook
-    logger.info(f"Setting webhook to {WEBHOOK_URL}...")
     await bot.set_webhook(WEBHOOK_URL)
     logger.info(f"Webhook set at {WEBHOOK_URL}.")
 
@@ -92,15 +101,13 @@ async def main():
 
     try:
         while True:
-            await asyncio.sleep(3600)  # Keep the bot running
+            await asyncio.sleep(3600)
     finally:
-        logger.info("Shutting down bot...")
         await bot.delete_webhook()
         logger.info("Webhook removed.")
         await client.disconnect()
-        logger.info("Telethon client disconnected.")
         await shutdown_scheduler()
-        logger.info("Scheduler shutdown completed.")
+        logger.info("Bot stopped.")
 
 if __name__ == "__main__":
     try:
