@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 API_TOKEN = os.getenv("bot_token")
 API_ID = os.getenv("api_id")
 API_HASH = os.getenv("api_hash")
-WEBHOOK_URL = os.getenv("webhook_url")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PORT = int(os.getenv("port", 3000))
 TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
 
