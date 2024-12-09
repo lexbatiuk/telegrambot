@@ -1,56 +1,72 @@
-from aiogram import Router, types
-from aiogram.filters import Command
+import logging
+from aiogram import Dispatcher, types
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from database import add_channel, get_user_channels
 
-def register_handlers(dp, client):
-    router = Router()
+logger = logging.getLogger(__name__)
 
-    @router.message(Command("start"))
+def register_handlers(dp: Dispatcher, client):
+    @dp.message(commands=["start"])
     async def send_welcome(message: types.Message):
-        keyboard = types.ReplyKeyboardMarkup(
+        """
+        Sends a welcome message and displays menu buttons.
+        """
+        keyboard = ReplyKeyboardMarkup(
             keyboard=[
-                [types.KeyboardButton(text="Add channel"), types.KeyboardButton(text="My channels")],
-                [types.KeyboardButton(text="Get digest")],
+                [KeyboardButton(text="Add Channel"), KeyboardButton(text="My Channels")],
+                [KeyboardButton(text="Get Digest")]
             ],
             resize_keyboard=True
         )
         await message.answer("Welcome! Use the menu to manage the bot.", reply_markup=keyboard)
 
-    @router.message(lambda message: message.text == "Add channel")
+    @dp.message(lambda message: message.text == "Add Channel")
     async def add_channel_prompt(message: types.Message):
-        await message.answer("Enter the channel username (e.g., @example_channel):")
+        """
+        Prompts the user to add a channel.
+        """
+        await message.answer("Please enter the channel username (e.g., @example_channel).")
 
-    @router.message(lambda message: message.text.startswith('@'))
-    async def add_channel_handler(message: types.Message):
+    @dp.message(lambda message: message.text.startswith("@"))
+    async def handle_channel_addition(message: types.Message):
+        """
+        Adds the channel to the database.
+        """
         user_id = message.from_user.id
         channel = message.text.strip()
         if add_channel(user_id, channel):
-            await message.answer(f"Channel {channel} successfully added!")
+            await message.answer(f"Channel {channel} added successfully!")
         else:
             await message.answer(f"Channel {channel} is already added.")
 
-    @router.message(lambda message: message.text == "My channels")
+    @dp.message(lambda message: message.text == "My Channels")
     async def show_channels(message: types.Message):
+        """
+        Displays the user's subscribed channels.
+        """
         user_id = message.from_user.id
         channels = get_user_channels(user_id)
         if channels:
-            await message.answer(f"Your channels:\n" + "\n".join(channels))
+            await message.answer("Your channels:\n" + "\n".join(channels))
         else:
-            await message.answer("You haven't added any channels yet.")
+            await message.answer("You have no subscribed channels.")
 
-    @router.message(lambda message: message.text == "Get digest")
+    @dp.message(lambda message: message.text == "Get Digest")
     async def get_digest(message: types.Message):
+        """
+        Sends the latest messages from the user's channels.
+        """
         user_id = message.from_user.id
         channels = get_user_channels(user_id)
         if not channels:
-            await message.answer("You have no channels added.")
+            await message.answer("You have no subscribed channels.")
             return
-
+        
         for channel in channels:
             try:
                 async for msg in client.iter_messages(channel, limit=5):
-                    await message.answer(f"{channel}:\n{msg.text[:200]}...")
+                    if msg.text:
+                        await message.answer(f"{channel}: {msg.text}")
             except Exception as e:
-                await message.answer(f"Error accessing {channel}: {e}")
-
-    dp.include_router(router)
+                logger.error(f"Error fetching messages from {channel}: {e}")
+                await message.answer(f"Could not fetch messages from {channel}.")
