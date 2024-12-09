@@ -18,10 +18,11 @@ logger = logging.getLogger(__name__)
 API_TOKEN = os.getenv('bot_token')
 API_ID = os.getenv('api_id')
 API_HASH = os.getenv('api_hash')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 
-if not API_TOKEN or not API_ID or not API_HASH:
-    logger.critical("Environment variables `bot_token`, `api_id`, or `api_hash` are missing. Exiting.")
-    raise ValueError("Environment variables `bot_token`, `api_id`, or `api_hash` are missing.")
+if not API_TOKEN or not API_ID or not API_HASH or not WEBHOOK_URL:
+    logger.critical("Environment variables `bot_token`, `api_id`, `api_hash`, or `WEBHOOK_URL` are missing. Exiting.")
+    raise ValueError("Environment variables `bot_token`, `api_id`, `api_hash`, or `WEBHOOK_URL` are missing.")
 
 # Initialize Bot and Dispatcher
 bot = Bot(token=API_TOKEN)
@@ -41,7 +42,22 @@ async def main():
     setup_scheduler(bot)
     logger.info("Scheduler initialized.")
 
-    await dp.start_polling(bot)
+    # Set up webhook
+    await bot.set_webhook(WEBHOOK_URL)
+    logger.info(f"Webhook set to {WEBHOOK_URL}")
+
+    # Start polling using webhook
+    from aiogram.webhook.aiohttp_server import setup_application, SimpleRequestHandler
+    from aiohttp import web
+
+    app = web.Application()
+    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, port=int(os.getenv("PORT", 8443)))  # Default port for webhook
+    await site.start()
+
+    logger.info("Webhook server started.")
 
 if __name__ == "__main__":
     try:
