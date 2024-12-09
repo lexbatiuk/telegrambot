@@ -1,4 +1,51 @@
+import logging
+import asyncio
+from aiohttp import web
+from aiogram import Bot, Dispatcher
+from handlers import router
+from scheduler import setup_scheduler, shutdown_scheduler
+from database import init_db
+from telethon.sync import TelegramClient
 import os
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+# Telegram API credentials
+API_TOKEN = os.getenv('bot_token')
+API_ID = os.getenv('api_id')
+API_HASH = os.getenv('api_hash')
+WEBHOOK_URL = os.getenv('webhook_url')
+PORT = int(os.getenv('port', 3000))
+TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE")
+
+if not API_TOKEN or not API_ID or not API_HASH or not WEBHOOK_URL or not TELEGRAM_PHONE:
+    logger.critical("One or more environment variables are missing. Exiting.")
+    raise ValueError("Environment variables are missing.")
+
+# Initialize Bot, Dispatcher, and Telethon client
+bot = Bot(token=API_TOKEN)
+dp = Dispatcher()
+client = TelegramClient("user_session", API_ID, API_HASH)
+
+# Register routes for the bot
+dp.include_router(router)
+
+async def handle_webhook(request):
+    """
+    Handles webhook requests from Telegram.
+    """
+    try:
+        update = await request.json()
+        await dp.feed_update(bot=bot, update=update)
+        return web.Response()
+    except Exception as e:
+        logger.error(f"Error handling webhook: {e}")
+        return web.Response(status=500)
 
 async def main():
     logger.info("Starting bot...")
@@ -7,17 +54,8 @@ async def main():
     logger.info("Database initialized.")
 
     # Start Telethon client
-    try:
-        await client.start()
-        logger.info("Telethon client started. You are now authorized.")
-    except Exception as e:
-        logger.error("Authorization required. Logging in using TELEGRAM_PHONE.")
-        phone = os.getenv("TELEGRAM_PHONE")
-        if not phone:
-            raise ValueError("Environment variable `TELEGRAM_PHONE` is missing.")
-        await client.sign_in(phone=phone)
-        code = input("Please enter the code you received: ")
-        await client.sign_in(code=code)
+    await client.start(phone=TELEGRAM_PHONE)
+    logger.info("Telethon client started successfully.")
 
     # Set webhook
     await bot.set_webhook(WEBHOOK_URL)
@@ -45,3 +83,9 @@ async def main():
         await client.disconnect()
         await shutdown_scheduler()
         logger.info("Bot stopped.")
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        logger.exception(f"Critical error: {e}")
